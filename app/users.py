@@ -6,6 +6,8 @@ from fastapi_users.authentication import AuthenticationBackend, BearerTransport,
 from fastapi_users.db import SQLAlchemyUserDatabase
 from app.db import User, get_user_db, VerificationStatus, InvestorType
 from httpx_oauth.clients.google import GoogleOAuth2
+from fastapi_users.password import PasswordHelper
+from passlib.context import CryptContext
 from dotenv import load_dotenv
 import os
 
@@ -18,10 +20,17 @@ google_oauth_client = GoogleOAuth2(
     os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
 )
 
+bcrypt_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")
+custom_password_helper = PasswordHelper(bcrypt_context)
+
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     reset_password_token_secret = SECRET
     verification_token_secret = SECRET
+
+    def __init__(self, user_db):
+        super().__init__(user_db)
+        self.password_helper = custom_password_helper
 
     async def on_after_register(self, user: User, request: Optional[Request] = None):
         print(f"User {user.id} has registered")
@@ -75,4 +84,3 @@ async def current_unsubmitted_user(user: User = Depends(current_active_user)):
             detail=f"KYC already submitted. Current status: '{user.verification_status.value}'."
         )
     return user
-
