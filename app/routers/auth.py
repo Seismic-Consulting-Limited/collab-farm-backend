@@ -7,7 +7,7 @@ from fastapi_users.exceptions import UserAlreadyExists
 
 from app.users import get_user_manager, auth_backend
 
-router = APIRouter(prefix="/auth", tags=["Auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 class UserLogin(BaseModel):

@@ -24,6 +24,6 @@ app.include_router(
 app.include_router(
     fastapi_users.get_oauth_router(google_oauth_client, auth_backend, SECRET),
     prefix="/auth/google",
-    tags=["auth"]
+    tags=["auth_google"]
 )
 app.include_router(onboarding_router, prefix="/onboard")
