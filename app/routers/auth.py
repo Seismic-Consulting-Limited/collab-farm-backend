@@ -1,13 +1,17 @@
 # app/routers/auth.py
+from pydantic import BaseModel, EmailStr, ValidationError
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi_users.router.common import ErrorCode
 from pydantic import BaseModel, EmailStr
-from app.schemas import UserRead, UserCreate, UserUpdate
+from app.schemas import UserRead, UserCreate
 from fastapi_users.exceptions import UserAlreadyExists
 
 from app.users import get_user_manager, auth_backend
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
 class UserLogin(BaseModel):
@@ -21,10 +25,29 @@ class UserLogin(BaseModel):
 
 @router.post("/login")
 async def login(
-    credentials: UserLogin,
+    request: Request,
     user_manager=Depends(get_user_manager),
     strategy=Depends(auth_backend.get_strategy),
 ):
+    content_type = request.headers.get("content-type", "")
+
+    try:
+        if "application/json" in content_type:
+            body = await request.json()
+            credentials = UserLogin(**body)
+
+        else:
+            form = await request.form()
+            credentials = UserLogin(
+                email=form.get("username", ""),
+                password=form.get("password", ""),
+            )
+    except (ValidationError, Exception):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid email or password format.",
+        )
+
     user = await user_manager.authenticate(credentials)
 
     if user is None or not user.is_active:
