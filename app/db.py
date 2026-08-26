@@ -5,7 +5,7 @@ import os
 import uuid
 from dotenv import load_dotenv
 from fastapi import Depends
-from sqlalchemy import String, ForeignKey, DateTime, Enum as SQLEnum, Integer, LargeBinary
+from sqlalchemy import String, ForeignKey, DateTime, Enum as SQLEnum, Integer, LargeBinary, text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
@@ -44,6 +44,10 @@ class OAuthAccount(SQLAlchemyBaseOAuthAccountTableUUID, Base):
 
 class User(SQLAlchemyBaseUserTableUUID, Base):
     __tablename__ = "users"
+    
+    first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     investor_type: Mapped[InvestorType | None] = mapped_column(
         SQLEnum(InvestorType, native_enum=False), nullable=True
@@ -154,6 +158,11 @@ async_session = async_sessionmaker(engine, expire_on_commit=False)
 async def create_db_and_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        
+        
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name VARCHAR(100);"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name VARCHAR(100);"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR(20);"))
 
 
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
