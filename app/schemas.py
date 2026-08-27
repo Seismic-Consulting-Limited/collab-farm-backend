@@ -27,3 +27,4 @@ class UserUpdate(schemas.BaseUserUpdate):
     phone_number: str | None = None
     investor_type: InvestorType | None = None
     verification_status: VerificationStatus | None = None
+    

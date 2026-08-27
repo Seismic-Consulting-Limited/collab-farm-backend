@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import Depends, Request, HTTPException, status
 from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin
 from fastapi_users.authentication import AuthenticationBackend, BearerTransport, JWTStrategy
+from app.utils.emails import send_welcome_email
 from fastapi_users.db import SQLAlchemyUserDatabase
 from app.db import User, get_user_db, VerificationStatus, InvestorType
 from httpx_oauth.clients.google import GoogleOAuth2
@@ -33,15 +34,16 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         self.password_helper = custom_password_helper
 
     async def on_after_register(self, user: User, request: Optional[Request] = None):
-        print(f"User {user.id} has registered")
-
-    async def on_after_forgot_password(self, user: User, token: str, request: Optional[Request] = None):
-        print(
-            f"User {user.id} has forgotten their password. Reset token: {token}")
-
-    async def on_after_request_verify(self, user: User, token: str, request: Optional[Request] = None):
-        print(
-            f"Verification requested for user {user.id}. Verification token: {token}")
+        print(f"User {user.id} has registered.")
+        
+        # Trigger welcome email asynchronously
+        try:
+            await send_welcome_email(
+                email_to=user.email,
+                first_name=user.first_name
+            )
+        except Exception as e:
+            print(f"Failed to send welcome email to {user.email}: {e}")
 
 
 async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db)):
