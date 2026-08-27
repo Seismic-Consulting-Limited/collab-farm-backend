@@ -2,7 +2,8 @@ import uuid
 from pydantic import ConfigDict, Field, BaseModel
 from datetime import datetime
 from fastapi_users import schemas
-from app.db import InvestorType, VerificationStatus, TrancheType, PackageStatus
+from app.models.user import InvestorType, VerificationStatus
+from app.models.packages import TrancheType, PackageStatus
 
 
 class UserRead(schemas.BaseUser[uuid.UUID]):

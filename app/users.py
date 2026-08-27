@@ -1,24 +1,30 @@
+# app/users.py
+import os
 import uuid
 from typing import Optional
-from fastapi import Depends, Request, HTTPException, status
-from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin
-from fastapi_users.authentication import AuthenticationBackend, BearerTransport, JWTStrategy
-from app.utils.emails import send_welcome_email
-from fastapi_users.db import SQLAlchemyUserDatabase
-from app.db import User, get_user_db, VerificationStatus, InvestorType
-from httpx_oauth.clients.google import GoogleOAuth2
-from fastapi_users.password import PasswordHelper
-from passlib.context import CryptContext
 from dotenv import load_dotenv
-import os
+from fastapi import Depends, HTTPException, Request, status
+from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin
+from fastapi_users.authentication import (
+    AuthenticationBackend,
+    BearerTransport,
+    JWTStrategy,
+)
+from fastapi_users.db import SQLAlchemyUserDatabase
+from fastapi_users.password import PasswordHelper
+from httpx_oauth.clients.google import GoogleOAuth2
+from passlib.context import CryptContext
+from app.db import get_user_db
+from app.models.user import InvestorType, User, VerificationStatus
+from app.utils.emails import send_welcome_email
 
 load_dotenv()
 
 SECRET = os.getenv("SECRET", "")
 
 google_oauth_client = GoogleOAuth2(
-    os.getenv("GOOGLE_OAUTH_CLIENT_ID"),
-    os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
+    os.getenv("GOOGLE_OAUTH_CLIENT_ID", ""),
+    os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
 )
 
 bcrypt_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")
@@ -35,12 +41,11 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
 
     async def on_after_register(self, user: User, request: Optional[Request] = None):
         print(f"User {user.id} has registered.")
-        
-        # Trigger welcome email asynchronously
+
         try:
             await send_welcome_email(
                 email_to=user.email,
-                first_name=user.first_name
+                first_name=user.first_name,
             )
         except Exception as e:
             print(f"Failed to send welcome email to {user.email}: {e}")
@@ -64,25 +69,24 @@ auth_backend = AuthenticationBackend(
 )
 
 fastapi_users = FastAPIUsers[User, uuid.UUID](
-    get_user_manager, auth_backends=[auth_backend])
+    get_user_manager, auth_backends=[auth_backend]
+)
 current_active_user = fastapi_users.current_user(active=True)
 
 
 async def current_verified_investor(user: User = Depends(current_active_user)):
-
     if user.verification_status != VerificationStatus.APPROVED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Access denied. Current status is '{user.verification_status.value}'. Verified account required."
+            detail=f"Access denied. Current status is '{user.verification_status.value}'. Verified account required.",
         )
     return user
 
 
 async def current_unsubmitted_user(user: User = Depends(current_active_user)):
-
     if user.verification_status != VerificationStatus.NOT_SUBMITTED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"KYC already submitted. Current status: '{user.verification_status.value}'."
+            detail=f"KYC already submitted. Current status: '{user.verification_status.value}'.",
         )
     return user

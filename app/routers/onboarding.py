@@ -1,15 +1,10 @@
 import json
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db import (
-    get_async_session,
-    User,
-    IndividualProfile,
-    GroupProfile,
-    VerificationStatus,
-    InvestorType
-)
+from app.models.user import User, InvestorType, VerificationStatus
+from app.models.investment import IndividualProfile, GroupProfile
 from app.users import current_unsubmitted_user
+from app.db import get_async_session
 
 router = APIRouter(tags=["Investor Update Profile"])
 
@@ -137,4 +132,3 @@ async def submit_group_investor(
         "message": "Investment Group KYC submitted successfully. Your account is pending admin review.",
         "verification_status": user.verification_status.value
     }
-
