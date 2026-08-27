@@ -1,6 +1,7 @@
 # app/users.py
 import os
 import uuid
+import traceback
 from typing import Optional
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, Request, status
@@ -40,15 +41,17 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         self.password_helper = custom_password_helper
 
     async def on_after_register(self, user: User, request: Optional[Request] = None):
-        print(f"User {user.id} has registered.")
+        print(f"User {user.id} has registered ({user.email}).")
 
         try:
             await send_welcome_email(
                 email_to=user.email,
                 first_name=user.first_name,
             )
+            print(f"Welcome email successfully sent to {user.email}")
         except Exception as e:
-            print(f"Failed to send welcome email to {user.email}: {e}")
+            print(f"CRITICAL: Failed to send email to {user.email}: {e}")
+            traceback.print_exc()
 
 
 async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db)):

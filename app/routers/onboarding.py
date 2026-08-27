@@ -2,7 +2,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User, InvestorType, VerificationStatus
-from app.models.investment import IndividualProfile, GroupProfile
+from app.models.profile import IndividualProfile, GroupProfile
 from app.users import current_unsubmitted_user
 from app.db import get_async_session
 

@@ -19,11 +19,11 @@ async def send_welcome_email(
     email_to: EmailStr,
     first_name: str | None = None
 ):
-    name_display = f" {first_name}" if first_name else ""
+    display_name = first_name if first_name else email_to
 
     html_content = f"""
     <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-        <h2>Welcome to CollabFarm{name_display}!</h2>
+        <h2>Welcome to CollabFarm {display_name}!</h2>
         <p>Thank you for joining our platform. We're thrilled to have you onboard.</p>
         <p>You can now explore agricultural investment opportunities and manage your portfolio seamlessly.</p>
         <br/>

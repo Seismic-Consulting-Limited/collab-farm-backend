@@ -2,7 +2,6 @@
 from enum import Enum
 import uuid
 from typing import TYPE_CHECKING, Optional
-
 from fastapi_users.db import (
     SQLAlchemyBaseOAuthAccountTableUUID,
     SQLAlchemyBaseUserTableUUID,
@@ -11,9 +10,8 @@ from sqlalchemy import Enum as SQLEnum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
-
 if TYPE_CHECKING:
-    from app.models.investment import GroupProfile, IndividualProfile
+    from app.models.profile import GroupProfile, IndividualProfile
 
 
 class InvestorType(str, Enum):

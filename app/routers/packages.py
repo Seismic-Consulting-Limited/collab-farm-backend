@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_async_session
 from app.models.user import User
-from app.schemas import PackageCreate, PackageRead, PaginatedPackageResponse
+from app.schemas.package import PackageCreate, PackageStatus, PackageRead, PaginatedPackageResponse
 from app.models.packages import InvestmentPackage, PackageStatus, TrancheType
 from app.users import current_verified_investor, current_active_user
 
