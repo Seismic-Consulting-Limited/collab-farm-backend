@@ -5,6 +5,7 @@ from app.users import auth_backend, fastapi_users, google_oauth_client, SECRET
 from app.schemas import UserRead, UserUpdate
 from app.routers.onboarding import router as onboarding_router
 from app.routers.auth import router as auth_router
+from app.routers.packages import router as packages_router
 
 
 @asynccontextmanager
@@ -27,3 +28,4 @@ app.include_router(
     tags=["auth_google"]
 )
 app.include_router(onboarding_router, prefix="/onboard")
+app.include_router(packages_router)

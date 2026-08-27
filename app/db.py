@@ -44,7 +44,7 @@ class OAuthAccount(SQLAlchemyBaseOAuthAccountTableUUID, Base):
 
 class User(SQLAlchemyBaseUserTableUUID, Base):
     __tablename__ = "users"
-    
+
     first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -158,7 +158,7 @@ async_session = async_sessionmaker(engine, expire_on_commit=False)
 async def create_db_and_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        
+
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name VARCHAR(100);"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name VARCHAR(100);"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR(20);"))
@@ -171,5 +171,45 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
 
 async def get_user_db(session: AsyncSession = Depends(get_async_session)):
     yield SQLAlchemyUserDatabase(session, User, OAuthAccount)
-    
 
+
+class TrancheType(str, Enum):
+    SINGLE_TRANCHE = "single_tranche"
+    MULTI_TRANCHE = "multi_tranche"
+
+
+class PackageStatus(str, Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    PENDING = "pending"
+    REJECTED = "rejected"
+    COMPLETED = "completed"
+
+
+class InvestmentPackage(Base):
+    __tablename__ = "investment_packages"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    creator_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=False)
+    total_fund_amount: Mapped[float] = mapped_column(nullable=False)
+    tenure_months: Mapped[int] = mapped_column(Integer, nullable=False)
+    expected_roi: Mapped[float] = mapped_column(nullable=False)
+
+    tranche_type: Mapped[TrancheType] = mapped_column(
+        SQLEnum(TrancheType, native_enum=False), default=TrancheType.SINGLE_TRANCHE, nullable=False
+    )
+    status: Mapped[PackageStatus] = mapped_column(
+        SQLEnum(PackageStatus, native_enum=False), default=PackageStatus.PENDING, nullable=False
+    )
+    rejection_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    creator: Mapped["User"] = relationship("User")
