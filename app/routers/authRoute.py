@@ -5,6 +5,7 @@ from fastapi_users.router.common import ErrorCode
 from pydantic import BaseModel, EmailStr
 from app.schemas.userSchema import UserRead, UserCreate
 from fastapi_users.exceptions import UserAlreadyExists
+from fastapi.security import OAuth2PasswordRequestForm
 
 from app.users import get_user_manager, auth_backend
 
@@ -25,6 +26,8 @@ class UserLogin(BaseModel):
 @router.post("/login")
 async def login(
     request: Request,
+    # Exposes parameters to Swagger UI
+    form_data: OAuth2PasswordRequestForm = Depends(),
     user_manager=Depends(get_user_manager),
     strategy=Depends(auth_backend.get_strategy),
 ):
@@ -34,12 +37,10 @@ async def login(
         if "application/json" in content_type:
             body = await request.json()
             credentials = UserLogin(**body)
-
         else:
-            form = await request.form()
             credentials = UserLogin(
-                email=form.get("username", ""),
-                password=form.get("password", ""),
+                email=form_data.username,
+                password=form_data.password,
             )
     except (ValidationError, Exception):
         raise HTTPException(

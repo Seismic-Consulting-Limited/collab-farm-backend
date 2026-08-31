@@ -17,6 +17,7 @@ class InvestorType(str, Enum):
     INDIVIDUAL = "individual"
     GROUP = "group_investment"
 
+
 class VerificationStatus(str, Enum):
     NOT_SUBMITTED = "not_submitted"
     PENDING = "pending"
@@ -43,7 +44,7 @@ class User(SQLAlchemyBaseUserTableUUID, Base, TimestampMixin):
         String(20), nullable=True)
 
     investor_type: Mapped[Optional[InvestorType]] = mapped_column(
-        SQLEnum(InvestorType, native_enum=False), nullable=True
+        SQLEnum(InvestorType, native_enum=False), default=InvestorType.INDIVIDUAL, nullable=True
     )
     verification_status: Mapped[VerificationStatus] = mapped_column(
         SQLEnum(VerificationStatus, native_enum=False),
@@ -61,4 +62,3 @@ class User(SQLAlchemyBaseUserTableUUID, Base, TimestampMixin):
     oauth_accounts: Mapped[list[OAuthAccount]] = relationship(
         "OAuthAccount", lazy="joined", cascade="all, delete-orphan"
     )
-   
