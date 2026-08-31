@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from decimal import Decimal
 
 
-router = APIRouter(prefix="/wallet", tags=["Wallet"])
+router = APIRouter(prefix="/wallet", tags=["Investors Wallet"])
 
 load_dotenv()
 
