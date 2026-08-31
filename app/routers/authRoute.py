@@ -26,7 +26,6 @@ class UserLogin(BaseModel):
 @router.post("/login")
 async def login(
     request: Request,
-    # Exposes parameters to Swagger UI
     form_data: OAuth2PasswordRequestForm = Depends(),
     user_manager=Depends(get_user_manager),
     strategy=Depends(auth_backend.get_strategy),
