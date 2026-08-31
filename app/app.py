@@ -6,6 +6,7 @@ from app.schemas.userSchema import UserRead, UserUpdate
 from app.routers.profileRoute import router as onboarding_router
 from app.routers.authRoute import router as auth_router
 from app.routers.packageRoute import router as packages_router
+from app.routers.walletRoute import router as wallet_router 
 
 
 @asynccontextmanager
@@ -29,4 +30,5 @@ app.include_router(
 )
 app.include_router(onboarding_router, prefix="/onboard")
 app.include_router(packages_router)
+app.include_router(wallet_router)
 

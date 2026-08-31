@@ -15,7 +15,7 @@ from fastapi_users.password import PasswordHelper
 from httpx_oauth.clients.google import GoogleOAuth2
 from passlib.context import CryptContext
 from app.db import get_user_db
-from app.models.userModel import InvestorType, User, VerificationStatus
+from app.models.userModel import User, VerificationStatus
 from app.utils.emails import send_welcome_email
 
 load_dotenv()
