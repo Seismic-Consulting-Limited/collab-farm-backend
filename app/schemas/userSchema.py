@@ -1,7 +1,7 @@
 import uuid
 from pydantic import ConfigDict
 from fastapi_users import schemas
-from app.models.user import InvestorType, VerificationStatus
+from app.models.userModel import InvestorType, VerificationStatus
 
 class UserRead(schemas.BaseUser[uuid.UUID]):
     first_name: str | None = None

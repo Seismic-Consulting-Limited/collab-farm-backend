@@ -2,10 +2,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.db import create_db_and_tables
 from app.users import auth_backend, fastapi_users, google_oauth_client, SECRET
-from app.schemas.user import UserRead, UserUpdate
-from app.routers.onboarding import router as onboarding_router
-from app.routers.auth import router as auth_router
-from app.routers.packages import router as packages_router
+from app.schemas.userSchema import UserRead, UserUpdate
+from app.routers.profileRoute import router as onboarding_router
+from app.routers.authRoute import router as auth_router
+from app.routers.packageRoute import router as packages_router
 
 
 @asynccontextmanager

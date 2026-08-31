@@ -1,4 +1,3 @@
-# app/routers/packages.py
 import math
 import uuid
 from typing import Optional
@@ -6,9 +5,9 @@ from fastapi import APIRouter, Depends, Query, status, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_async_session
-from app.models.user import User
-from app.schemas.package import PackageCreate, PackageStatus, PackageRead, PaginatedPackageResponse
-from app.models.packages import InvestmentPackage, PackageStatus, TrancheType
+from app.models.userModel import User
+from app.schemas.packageschema import PackageCreate, PackageStatus, PackageRead, PaginatedPackageResponse
+from app.models.packageModel import InvestmentPackage, PackageStatus, TrancheType
 from app.users import current_verified_investor, current_active_user
 
 router = APIRouter(prefix="/packages", tags=["Investment Packages"])

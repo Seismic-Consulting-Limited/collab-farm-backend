@@ -1,4 +1,3 @@
-# app/models/user.py
 from enum import Enum
 import uuid
 from typing import TYPE_CHECKING, Optional
@@ -11,7 +10,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 if TYPE_CHECKING:
-    from app.models.profile import GroupProfile, IndividualProfile
+    from app.models.profileModel import GroupProfile, IndividualProfile
 
 
 class InvestorType(str, Enum):

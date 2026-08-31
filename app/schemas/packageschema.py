@@ -1,7 +1,7 @@
 import uuid
 from pydantic import ConfigDict, Field, BaseModel
 from datetime import datetime
-from app.models.packages import TrancheType, PackageStatus
+from app.models.packageModel import TrancheType, PackageStatus
 
 class PackageCreate(BaseModel):
     title: str

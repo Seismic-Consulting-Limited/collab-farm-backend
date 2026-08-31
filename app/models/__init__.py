@@ -1,5 +1,5 @@
 from app.models.base import Base
-from app.models.packages import InvestmentPackage, PackageStatus, TrancheType
-from app.models.user import User
+from app.models.packageModel import InvestmentPackage, PackageStatus, TrancheType
+from app.models.userModel import User
 
 __all__ = ["Base", "User", "InvestmentPackage", "PackageStatus", "TrancheType"]

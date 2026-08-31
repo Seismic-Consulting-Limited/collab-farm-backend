@@ -1,4 +1,3 @@
-# app/models/profile.py
 import uuid
 from typing import TYPE_CHECKING, Optional, Union
 from sqlalchemy import ForeignKey, Integer, LargeBinary, String
@@ -7,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
-    from app.models.user import User
+    from app.models.userModel import User
 
 
 class IndividualProfile(Base, TimestampMixin):
@@ -32,8 +31,8 @@ class IndividualProfile(Base, TimestampMixin):
     id_doc_file: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     id_doc_filename: Mapped[str] = mapped_column(String, nullable=False)
 
-    investment_preferences: Mapped[Optional[dict]
-                                   ] = mapped_column(JSONB, nullable=True)
+    investment_preferences: Mapped[Optional[str]
+                                   ] = mapped_column(String, nullable=True)
 
     user: Mapped["User"] = relationship(
         "User", back_populates="individual_profile")
@@ -59,8 +58,8 @@ class GroupProfile(Base, TimestampMixin):
 
     rep_name: Mapped[str] = mapped_column(String, nullable=False)
     rep_contact: Mapped[str] = mapped_column(String, nullable=False)
-    senior_mgmt_list: Mapped[Union[dict, list]
-                             ] = mapped_column(JSONB, nullable=False)
+    senior_mgmt_list: Mapped[Optional[str]
+                             ] = mapped_column(String, nullable=False)
     tax_id: Mapped[str] = mapped_column(String, nullable=False)
 
     cac_cert_file: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
@@ -68,7 +67,7 @@ class GroupProfile(Base, TimestampMixin):
     rep_id_file: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     rep_id_filename: Mapped[str] = mapped_column(String, nullable=False)
 
-    investment_preferences: Mapped[Optional[dict]
-                                   ] = mapped_column(JSONB, nullable=True)
+    investment_preferences: Mapped[Optional[str]
+                                   ] = mapped_column(String, nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="group_profile")

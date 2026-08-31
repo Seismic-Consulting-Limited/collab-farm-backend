@@ -1,10 +1,9 @@
-# app/routers/auth.py
 from pydantic import BaseModel, EmailStr, ValidationError
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi_users.router.common import ErrorCode
 from pydantic import BaseModel, EmailStr
-from app.schemas.user import UserRead, UserCreate
+from app.schemas.userSchema import UserRead, UserCreate
 from fastapi_users.exceptions import UserAlreadyExists
 
 from app.users import get_user_manager, auth_backend

@@ -1,10 +1,11 @@
 import json
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.user import User, InvestorType, VerificationStatus
-from app.models.profile import IndividualProfile, GroupProfile
+from app.models.userModel import User, InvestorType, VerificationStatus
+from app.models.profileModel import IndividualProfile, GroupProfile
 from app.users import current_unsubmitted_user
 from app.db import get_async_session
+from typing import Optional
 
 router = APIRouter(tags=["Investor Update Profile"])
 
@@ -18,7 +19,7 @@ async def submit_individual_investor(
     residential_address: str = Form(...),
     id_type: str = Form(...),
     id_number: str = Form(...),
-    investment_preferences: str = Form(...),
+    investment_preferences: Optional[str] = Form(...),
     id_doc_file: UploadFile = File(...),
     user: User = Depends(current_unsubmitted_user),
     db: AsyncSession = Depends(get_async_session)
@@ -28,12 +29,6 @@ async def submit_individual_investor(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Account type mismatch. You are not registered as an individual investor."
         )
-
-    try:
-        preferences_dict = json.loads(investment_preferences)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Invalid JSON in investment_preferences")
 
     id_doc_bytes = await id_doc_file.read()
 
@@ -48,7 +43,7 @@ async def submit_individual_investor(
         id_number=id_number,
         id_doc_file=id_doc_bytes,
         id_doc_filename=id_doc_file.filename,
-        investment_preferences=preferences_dict
+        investment_preferences=investment_preferences
     )
 
     # This is where i approved the investor details
@@ -77,8 +72,8 @@ async def submit_group_investor(
     rep_name: str = Form(...),
     rep_contact: str = Form(...),
     tax_id: str = Form(...),
-    senior_mgmt_list: str = Form(...),
-    investment_preferences: str = Form(...),
+    senior_mgmt_list: Optional[str] = Form(...),
+    investment_preferences: Optional[str] = Form(...),
     cac_cert_file: UploadFile = File(...),
     rep_id_file: UploadFile = File(...),
     user: User = Depends(current_unsubmitted_user),
@@ -89,13 +84,6 @@ async def submit_group_investor(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Account type mismatch. You are not registered as an investment group."
         )
-
-    try:
-        preferences_dict = json.loads(investment_preferences)
-        mgmt_list_dict = json.loads(senior_mgmt_list)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Invalid JSON in nested text fields")
 
     cac_cert_bytes = await cac_cert_file.read()
     rep_id_bytes = await rep_id_file.read()
@@ -111,13 +99,13 @@ async def submit_group_investor(
         year_established=year_established,
         rep_name=rep_name,
         rep_contact=rep_contact,
-        senior_mgmt_list=mgmt_list_dict,
+        senior_mgmt_list=senior_mgmt_list,
         tax_id=tax_id,
         cac_cert_file=cac_cert_bytes,
         cac_cert_filename=cac_cert_file.filename,
         rep_id_file=rep_id_bytes,
         rep_id_filename=rep_id_file.filename,
-        investment_preferences=preferences_dict
+        investment_preferences=investment_preferences
     )
 
     # This is where i approved the investor details
