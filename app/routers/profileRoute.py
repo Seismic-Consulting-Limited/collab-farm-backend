@@ -46,7 +46,7 @@ async def submit_individual_investor(
         investment_preferences=investment_preferences
     )
 
-    # This is where i approved the investor details
+    # This is where i approved the investor details, the defualt is pending, but i changed it to approved for testing purposes
     user.investor_type = InvestorType.INDIVIDUAL
     user.verification_status = VerificationStatus.APPROVED
 
@@ -108,7 +108,7 @@ async def submit_group_investor(
         investment_preferences=investment_preferences
     )
 
-    # This is where i approved the investor details
+    # This is where i approved the investor details, the defualt is pending, but i changed it to approved for testing purposes
     user.investor_type = InvestorType.INVESTMENT_GROUP
     user.verification_status = VerificationStatus.APPROVED
 
