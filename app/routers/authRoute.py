@@ -9,8 +9,6 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from app.users import get_user_manager, auth_backend
 
-router = APIRouter(prefix="/auth", tags=["auth"])
-
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 

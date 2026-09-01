@@ -27,7 +27,6 @@ async def initialize_wallet_funding(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session)
 ):
-    """Generates a Paystack payment link and logs a pending transaction."""
     reference = f"WALLET_FUND_{uuid.uuid4().hex[:12]}"
     amount_in_kobo = int(payload.amount * 100)
 
@@ -79,7 +78,6 @@ async def verify_wallet_funding(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session)
 ):
-    """Verifies a transaction directly with Paystack and credits the wallet balance."""
     async with httpx.AsyncClient() as client:
         response = await client.get(
             f"https://api.paystack.co/transaction/verify/{reference}",
