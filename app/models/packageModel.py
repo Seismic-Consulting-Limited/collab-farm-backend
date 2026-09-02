@@ -5,21 +5,22 @@ from sqlalchemy import Enum as SQLEnum, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
+from app.schemas.packageschema import TrancheType, PackageStatus
+
 if TYPE_CHECKING:
     from app.models.userModel import User
 
 
-class TrancheType(str, Enum):
-    SINGLE_TRANCHE = "single_tranche"
-    MULTI_TRANCHE = "multi_tranche"
+# class TrancheType(str, Enum):
+#     SINGLE = "SINGLE"
+#     MULTI = "MULTI"
 
-
-class PackageStatus(str, Enum):
-    ACTIVE = "active"
-    INACTIVE = "inactive"
-    PENDING = "pending"
-    REJECTED = "rejected"
-    COMPLETED = "completed"
+# class PackageStatus(str, Enum):
+#     ACTIVE = "active"
+#     INACTIVE = "inactive"
+#     PENDING = "pending"
+#     REJECTED = "rejected"
+#     COMPLETED = "completed"
 
 
 class InvestmentPackage(Base, TimestampMixin):
@@ -39,7 +40,7 @@ class InvestmentPackage(Base, TimestampMixin):
 
     tranche_type: Mapped[TrancheType] = mapped_column(
         SQLEnum(TrancheType, native_enum=False),
-        default=TrancheType.SINGLE_TRANCHE,
+        default=TrancheType.SINGLE,
         nullable=False,
     )
     status: Mapped[PackageStatus] = mapped_column(

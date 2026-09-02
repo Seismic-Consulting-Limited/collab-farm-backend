@@ -1,11 +1,24 @@
 import uuid
 from pydantic import ConfigDict, Field, BaseModel
 from datetime import datetime
-from app.models.packageModel import TrancheType, PackageStatus
 from typing import Optional
 from decimal import Decimal
 from datetime import datetime
 from enum import Enum
+
+
+class TrancheType(str, Enum):
+    SINGLE = "SINGLE"
+    MULTI = "MULTI"
+
+
+class PackageStatus(str, Enum):
+    DRAFT = "DRAFT"
+    PENDING = "PENDING"
+    REVIEW = "REVIEW"
+    LIVE = "LIVE"
+    REJECTED = "REJECTED"
+    CLOSED = "CLOSED"
 
 
 class PackageCreate(BaseModel):
@@ -14,7 +27,7 @@ class PackageCreate(BaseModel):
     total_fund_amount: float = Field(gt=0)
     tenure_months: int = Field(gt=0)
     expected_roi: float = Field(gt=0)
-    tranche_type: TrancheType = TrancheType.SINGLE_TRANCHE
+    tranche_type: TrancheType = TrancheType.SINGLE
 
 
 class PackageRead(PackageCreate):
@@ -33,20 +46,6 @@ class PaginatedPackageResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
-
-
-class TrancheType(str, Enum):
-    SINGLE = "SINGLE"
-    MULTI = "MULTI"
-
-
-class PackageStatus(str, Enum):
-    DRAFT = "DRAFT"
-    PENDING_REVIEW = "PENDING_REVIEW"
-    REVISION_REQUESTED = "REVISION_REQUESTED"
-    LIVE = "LIVE"
-    REJECTED = "REJECTED"
-    CLOSED = "CLOSED"
 
 
 class PackageUpdateSchema(BaseModel):
