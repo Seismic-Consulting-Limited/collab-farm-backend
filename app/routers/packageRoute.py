@@ -31,7 +31,7 @@ async def create_package(
 
 
 @router.get("/get-packages", response_model=PaginatedPackageResponse)
-async def get_investor_packages(
+async def get_investment_packages(
     search: Optional[str] = Query(
         None, description="Search by package name or description"
     ),
@@ -99,7 +99,7 @@ async def get_package_by_id(
 
 
 @router.get("/my-packages", response_model=List[PackageReadSchema])
-async def get_investor_package_feed(
+async def get_investment_package_status(
     status_filter: Optional[PackageStatus] = None,
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session)
