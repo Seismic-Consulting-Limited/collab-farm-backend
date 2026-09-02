@@ -98,7 +98,7 @@ async def get_package_by_id(
     return package
 
 
-@router.get("/my-packages", response_model=List[PackageReadSchema])
+@router.get("/my-packages-status", response_model=List[PackageReadSchema])
 async def get_investment_package_status(
     status_filter: Optional[PackageStatus] = None,
     user: User = Depends(current_active_user),
@@ -116,7 +116,7 @@ async def get_investment_package_status(
     return result.scalars().all()
 
 
-@router.put("/{package_id}/revise", response_model=PackageReadSchema)
+@router.put("/revise/{package_id}", response_model=PackageReadSchema)
 async def revise_investment_package(
     package_id: uuid.UUID,
     payload: PackageUpdateSchema,
