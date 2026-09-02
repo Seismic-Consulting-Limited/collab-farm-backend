@@ -1,12 +1,12 @@
 import math
 import uuid
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, status, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_async_session
 from app.models.userModel import User
-from app.schemas.packageschema import PackageCreate, PackageStatus, PackageRead, PaginatedPackageResponse
+from app.schemas.packageschema import PackageCreate, PackageStatus, PackageRead, PaginatedPackageResponse, PackageReadSchema, PackageUpdateSchema
 from app.models.packageModel import InvestmentPackage, PackageStatus, TrancheType
 from app.users import current_verified_investor, current_active_user
 
@@ -94,5 +94,63 @@ async def get_package_by_id(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Investment package with ID '{package_id}' not found.",
         )
+
+    return package
+
+
+@router.get("/my-packages", response_model=List[PackageReadSchema])
+async def get_investor_package_feed(
+    status_filter: Optional[PackageStatus] = None,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    query = select(InvestmentPackage).where(
+        InvestmentPackage.creator_id == user.id)
+
+    if status_filter:
+        query = query.where(InvestmentPackage.status == status_filter)
+
+    query = query.order_by(InvestmentPackage.created_at.desc())
+
+    result = await session.execute(query)
+    return result.scalars().all()
+
+
+@router.put("/{package_id}/revise", response_model=PackageReadSchema)
+async def revise_investment_package(
+    package_id: uuid.UUID,
+    payload: PackageUpdateSchema,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    result = await session.execute(
+        select(InvestmentPackage).where(
+            InvestmentPackage.id == package_id,
+            InvestmentPackage.creator_id == user.id
+        )
+    )
+    package = result.scalars().first()
+
+    if not package:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Investment package not found."
+        )
+
+    if package.status not in [PackageStatus.REJECTED, PackageStatus.PENDING]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot revise package with status '{package.status.value}'."
+        )
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(package, field, value)
+
+    package.status = PackageStatus.PENDING
+    package.rejection_reason = None
+
+    await session.commit()
+    await session.refresh(package)
 
     return package
