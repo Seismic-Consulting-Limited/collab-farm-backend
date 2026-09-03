@@ -9,7 +9,7 @@ class UserRead(schemas.BaseUser[uuid.UUID]):
     phone_number: str | None = None
     investor_type: InvestorType | None = None
     # i changed the verification status to approved for testing purposes
-    verification_status: VerificationStatus = VerificationStatus.APPROVED
+    verification_status: VerificationStatus = VerificationStatus.NOT_SUBMITTED
 
     model_config = ConfigDict(from_attributes=True)
 

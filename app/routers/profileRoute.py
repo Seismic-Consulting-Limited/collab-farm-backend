@@ -46,7 +46,7 @@ async def submit_individual_investor(
         investment_preferences=investment_preferences
     )
 
-    # This is where i approved the investor details, the defualt is pending, but i changed it to approved for testing purposes
+#    default investor type is individual
     user.investor_type = InvestorType.INDIVIDUAL
     user.verification_status = VerificationStatus.APPROVED
 
@@ -56,7 +56,7 @@ async def submit_individual_investor(
 
     return {
         "message": "Individual KYC submitted successfully. Your account is pending admin review.",
-        "verification_status": user.verification_status.value
+        "verification_status": user.verification_status
     }
 
 
@@ -108,7 +108,6 @@ async def submit_group_investor(
         investment_preferences=investment_preferences
     )
 
-    # This is where i approved the investor details, the defualt is pending, but i changed it to approved for testing purposes
     user.investor_type = InvestorType.INVESTMENT_GROUP
     user.verification_status = VerificationStatus.APPROVED
 

@@ -49,7 +49,7 @@ class User(SQLAlchemyBaseUserTableUUID, Base, TimestampMixin):
     verification_status: Mapped[VerificationStatus] = mapped_column(
         String(30), SQLEnum(VerificationStatus, native_enum=False),
         # changed default to approved from for testing
-        default=VerificationStatus.APPROVED,
+        default=VerificationStatus.NOT_SUBMITTED,
         nullable=False,
     )
 
