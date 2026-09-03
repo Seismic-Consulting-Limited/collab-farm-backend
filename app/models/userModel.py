@@ -63,3 +63,4 @@ class User(SQLAlchemyBaseUserTableUUID, Base, TimestampMixin):
     oauth_accounts: Mapped[list[OAuthAccount]] = relationship(
         "OAuthAccount", lazy="joined", cascade="all, delete-orphan"
     )
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
