@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 class InvestorType(str, Enum):
     INDIVIDUAL = "INDIVIDUAL"
-    GROUP_INVESTMENT = "GROUP_INVESTMENT"
+    INVESTMENT_GROUP = "INVESTMENT_GROUP"
 
 
 class VerificationStatus(str, Enum):

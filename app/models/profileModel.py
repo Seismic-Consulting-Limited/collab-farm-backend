@@ -58,8 +58,8 @@ class GroupProfile(Base, TimestampMixin):
 
     rep_name: Mapped[str] = mapped_column(String, nullable=False)
     rep_contact: Mapped[str] = mapped_column(String, nullable=False)
-    senior_mgmt_list: Mapped[Optional[str]
-                             ] = mapped_column(String, nullable=False)
+    senior_mgmt_list: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True, default=None)
+    investment_preferences: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True, default=None)
     tax_id: Mapped[str] = mapped_column(String, nullable=False)
 
     cac_cert_file: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
@@ -67,7 +67,5 @@ class GroupProfile(Base, TimestampMixin):
     rep_id_file: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     rep_id_filename: Mapped[str] = mapped_column(String, nullable=False)
 
-    investment_preferences: Mapped[Optional[str]
-                                   ] = mapped_column(String, nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="group_profile")

@@ -72,8 +72,8 @@ async def submit_group_investor(
     rep_name: str = Form(...),
     rep_contact: str = Form(...),
     tax_id: str = Form(...),
-    senior_mgmt_list: Optional[str] = Form(...),
-    investment_preferences: Optional[str] = Form(...),
+    senior_mgmt_list: Optional[str] = Form(None),
+    investment_preferences: Optional[str] = Form(None),
     cac_cert_file: UploadFile = File(...),
     rep_id_file: UploadFile = File(...),
     user: User = Depends(current_unsubmitted_user),
@@ -117,5 +117,5 @@ async def submit_group_investor(
 
     return {
         "message": "Investment Group KYC submitted successfully. Your account is pending admin review.",
-        "verification_status": user.verification_status.value
+        "verification_status": user.verification_status
     }

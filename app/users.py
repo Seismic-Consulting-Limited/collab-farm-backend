@@ -89,6 +89,6 @@ async def current_unsubmitted_user(user: User = Depends(current_active_user)):
     if user.verification_status != VerificationStatus.NOT_SUBMITTED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"KYC already submitted. Current status: '{user.verification_status.value}'.",
+            detail=f"KYC already submitted. Current status: '{user.verification_status}'.",
         )
     return user
