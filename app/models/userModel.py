@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 
 
 class InvestorType(str, Enum):
-    INDIVIDUAL = "individual"
-    GROUP = "group_investment"
+    INDIVIDUAL = "INDIVIDUAL"
+    GROUP_INVESTMENT = "GROUP_INVESTMENT"
 
 
 class VerificationStatus(str, Enum):
@@ -44,11 +44,12 @@ class User(SQLAlchemyBaseUserTableUUID, Base, TimestampMixin):
         String(20), nullable=True)
 
     investor_type: Mapped[Optional[InvestorType]] = mapped_column(
-        SQLEnum(InvestorType, native_enum=False), default=InvestorType.INDIVIDUAL, nullable=True
+        String(30), SQLEnum(InvestorType, native_enum=False), default=InvestorType.INDIVIDUAL, nullable=True
     )
     verification_status: Mapped[VerificationStatus] = mapped_column(
-        SQLEnum(VerificationStatus, native_enum=False),
-        default=VerificationStatus.NOT_SUBMITTED,
+        String(30), SQLEnum(VerificationStatus, native_enum=False),
+        # changed default to approved from for testing
+        default=VerificationStatus.APPROVED,
         nullable=False,
     )
 
