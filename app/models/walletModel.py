@@ -25,20 +25,23 @@ class Wallet(Base):
     __tablename__ = "wallets"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey(
-        "users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
 
     available_balance: Mapped[float] = mapped_column(
-        Numeric(12, 2), default=0.00, nullable=False)
+        Numeric(12, 2), default=0.00, nullable=False
+    )
     locked_funds: Mapped[float] = mapped_column(
-        Numeric(12, 2), default=0.00, nullable=False)
+        Numeric(12, 2), default=0.00, nullable=False
+    )
     actively_distributed: Mapped[float] = mapped_column(
-        Numeric(12, 2), default=0.00, nullable=False)
+        Numeric(12, 2), default=0.00, nullable=False
+    )
 
     transactions: Mapped[list["Transaction"]] = relationship(
-        "Transaction", back_populates="wallet", cascade="all, delete-orphan")
-    transactions: Mapped[list["Transaction"]] = relationship(
-        "Transaction", back_populates="wallet", cascade="all, delete-orphan")
+        "Transaction", back_populates="wallet", cascade="all, delete-orphan"
+    )
 
 
 class Transaction(Base):

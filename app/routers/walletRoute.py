@@ -8,7 +8,8 @@ from sqlalchemy.future import select
 from app.db import get_async_session
 from app.models.userModel import User
 from app.models.walletModel import Wallet, Transaction, TransactionType, TransactionStatus
-from app.schemas.walletSchema import WalletOverviewResponse, TransactionRead, FundWalletSchema
+from app.schemas.walletSchema import WalletOverviewResponse, TransactionRead, FundWalletSchema, WithdrawalRequestSchema
+from app.utils.paystack import create_transfer_recipient, initiate_paystack_transfer
 from app.users import current_active_user
 from dotenv import load_dotenv
 from decimal import Decimal
@@ -157,3 +158,58 @@ async def get_wallet_transactions(
 
     tx_result = await session.execute(query)
     return tx_result.scalars().all()
+
+
+@router.post("/withdraw")
+async def withdraw_funds(
+    payload: WithdrawalRequestSchema,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    result = await session.execute(select(Wallet).where(Wallet.user_id == user.id))
+    wallet = result.scalars().first()
+
+    withdrawal_amount = Decimal(str(payload.amount))
+
+    if not wallet or wallet.available_balance < withdrawal_amount:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Insufficient wallet balance for this withdrawal."
+        )
+
+    amount_in_kobo = int(withdrawal_amount * 100)
+
+    recipient_code = await create_transfer_recipient(
+        name=payload.account_name,
+        account_number=payload.account_number,
+        bank_code=payload.bank_code
+    )
+
+    transfer_data = await initiate_paystack_transfer(
+        amount_kobo=amount_in_kobo,
+        recipient_code=recipient_code
+    )
+
+    wallet.available_balance -= withdrawal_amount
+
+    is_success = transfer_data.get("status") in ["success", "pending"]
+
+    transaction = Transaction(
+        wallet_id=wallet.id,
+        amount=withdrawal_amount,
+        description=f"Withdrawal to {payload.account_number} ({payload.account_name})",
+        type=TransactionType.WITHDRAWAL,
+        status=TransactionStatus.COMPLETED if is_success else TransactionStatus.FAILED,
+        reference=transfer_data.get(
+            "transfer_code") or f"TRF-{uuid.uuid4().hex[:10]}"
+    )
+
+    session.add(transaction)
+    await session.commit()
+
+    return {
+        "status": "success",
+        "message": "Withdrawal processed successfully.",
+        "new_balance": wallet.available_balance,
+        "reference": transaction.reference
+    }
