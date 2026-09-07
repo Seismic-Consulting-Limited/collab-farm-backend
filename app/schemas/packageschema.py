@@ -73,3 +73,12 @@ class PackageReadSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AdminPackageReviewSchema(BaseModel):
+    status: PackageStatus
+    rejection_reason: Optional[str] = None
+
+class InvestorDecisionSchema(BaseModel):
+    approved: bool
+    rejection_reason: Optional[str] = None

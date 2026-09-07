@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_async_session
 from app.models.userModel import User
-from app.schemas.packageschema import PackageCreate, PackageStatus, PackageRead, PaginatedPackageResponse, PackageReadSchema, PackageUpdateSchema
+from app.schemas.packageschema import PackageCreate, PackageStatus, PackageRead, PaginatedPackageResponse, PackageReadSchema, PackageUpdateSchema, AdminPackageReviewSchema, InvestorDecisionSchema
 from app.models.packageModel import InvestmentPackage, PackageStatus, TrancheType
 from app.users import current_verified_investor, current_active_user
 
@@ -153,4 +153,67 @@ async def revise_investment_package(
     await session.commit()
     await session.refresh(package)
 
+    return package
+
+
+@router.patch("/admin-review/{package_id}", response_model=PackageReadSchema)
+async def admin_review_package(
+    package_id: uuid.UUID,
+    payload: AdminPackageReviewSchema,
+    # i have to change this to super-admin later on
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    package = await session.get(InvestmentPackage, package_id)
+    if not package:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Investment package with ID '{package_id}' not found."
+        )
+    if payload.status not in [PackageStatus.REVIEW, PackageStatus.REJECTED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admin status update must be 'REVIEW' (Approved) or 'REJECTED'."
+        )
+    package.status = payload.status
+    if payload.rejection_reason:
+        package.rejection_reason = payload.rejection_reason
+
+    await session.commit()
+    await session.refresh(package)
+    return package
+
+
+@router.patch("/final-decision/{package_id}", response_model=PackageReadSchema)
+async def investor_final_decision(
+    package_id: uuid.UUID,
+    payload: InvestorDecisionSchema,
+    user: User = Depends(current_verified_investor),
+    session: AsyncSession = Depends(get_async_session)
+):
+    result = await session.execute(
+        select(InvestmentPackage).where(
+            InvestmentPackage.id == package_id,
+            InvestmentPackage.creator_id == user.id
+        )
+    )
+    package = result.scalars().first()
+    if not package:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Investment package not found or does not belong to you."
+        )
+    if package.status != PackageStatus.REVIEW:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot process decision. Package must be in 'REVIEW' status from admin. Current status: '{package.status.value}'."
+        )
+    if payload.approved:
+        package.status = PackageStatus.LIVE
+        package.rejection_reason = None
+    else:
+        package.status = PackageStatus.REJECTED
+        package.rejection_reason = payload.rejection_reason or "Withdrawn by investor after admin review."
+    await session.commit()
+    await session.refresh(package)
     return package

@@ -159,6 +159,8 @@ async def get_wallet_transactions(
     tx_result = await session.execute(query)
     return tx_result.scalars().all()
 
+# used mock paystack withdrawal, because my paystack is not verified
+
 
 @router.post("/withdraw")
 async def withdraw_funds(
@@ -178,22 +180,17 @@ async def withdraw_funds(
         )
 
     amount_in_kobo = int(withdrawal_amount * 100)
-
     recipient_code = await create_transfer_recipient(
         name=payload.account_name,
         account_number=payload.account_number,
         bank_code=payload.bank_code
     )
-
     transfer_data = await initiate_paystack_transfer(
         amount_kobo=amount_in_kobo,
         recipient_code=recipient_code
     )
-
     wallet.available_balance -= withdrawal_amount
-
     is_success = transfer_data.get("status") in ["success", "pending"]
-
     transaction = Transaction(
         wallet_id=wallet.id,
         amount=withdrawal_amount,
@@ -203,10 +200,8 @@ async def withdraw_funds(
         reference=transfer_data.get(
             "transfer_code") or f"TRF-{uuid.uuid4().hex[:10]}"
     )
-
     session.add(transaction)
     await session.commit()
-
     return {
         "status": "success",
         "message": "Withdrawal processed successfully.",

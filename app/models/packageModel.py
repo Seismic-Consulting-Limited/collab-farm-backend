@@ -10,19 +10,6 @@ from app.schemas.packageschema import TrancheType, PackageStatus
 if TYPE_CHECKING:
     from app.models.userModel import User
 
-
-# class TrancheType(str, Enum):
-#     SINGLE = "SINGLE"
-#     MULTI = "MULTI"
-
-# class PackageStatus(str, Enum):
-#     ACTIVE = "active"
-#     INACTIVE = "inactive"
-#     PENDING = "pending"
-#     REJECTED = "rejected"
-#     COMPLETED = "completed"
-
-
 class InvestmentPackage(Base, TimestampMixin):
     __tablename__ = "investment_packages"
 
