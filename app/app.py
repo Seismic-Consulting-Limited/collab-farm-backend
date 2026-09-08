@@ -8,7 +8,9 @@ from app.routers.authRoute import router as auth_router
 from app.routers.packageRoute import router as packages_router
 from app.routers.walletRoute import router as wallet_router 
 from app.routers.applicationRoute import router as application_router
+from fastapi.middleware.cors import CORSMiddleware
 # from app.routers.chatRoute import router as chat_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -16,6 +18,20 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+
+origins = [
+    "http://localhost:3000",
+    "https://your-frontend-domain.vercel.app",
+    "*",  
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(auth_router)
 
