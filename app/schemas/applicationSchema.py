@@ -2,7 +2,7 @@ import uuid
 from pydantic import BaseModel, Field, ConfigDict
 from decimal import Decimal
 from typing import Optional, List, Any
-from datetime import datetime
+from datetime import datetime, date
 from enum import Enum
 
 class ApplicationStatus(str, Enum):
@@ -19,6 +19,12 @@ class ApplicationStatus(str, Enum):
     COMPLETED = "COMPLETED"
 
 
+class TrancheDisbursementCreate(BaseModel):
+    tranche_number: int = Field(gt=0)
+    amount: Decimal = Field(gt=0)
+    scheduled_date: date
+    milestone_description: str
+
 class DisbursementTranchePlan(BaseModel):
     tranche_number: int = Field(..., ge=1)
     percentage: Decimal = Field(..., gt=0, le=100)
@@ -30,8 +36,9 @@ class ApplicationCreate(BaseModel):
     package_id: uuid.UUID
     requested_amount: Decimal = Field(..., gt=0,
                                       description="Funding By Cooperative in Naira",)
-    target_farmer_id: Optional[List[uuid.UUID]] = None
+    target_farmer_ids: Optional[List[uuid.UUID]] = None
     notes: Optional[str]
+    disbursement_plan: List[TrancheDisbursementCreate]
 
 
 class ApplicationUpdateSchema(BaseModel):
@@ -63,3 +70,7 @@ class PaginatedAplicationResponse(BaseModel):
     total: int
     page_size: int
     total_pages: int
+
+class InvestorApplicationReviewSchema(BaseModel):
+    approved: bool
+    rejection_reason: Optional[str] = None

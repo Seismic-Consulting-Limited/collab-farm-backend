@@ -12,20 +12,19 @@ from app.models.applicationModel import FundingApplication, ApplicationStatus
 from app.schemas.applicationSchema import (
     ApplicationCreate,
     ApplicationRead,
-    ApplicationUpdateSchema, PaginatedAplicationResponse
+    ApplicationUpdateSchema, PaginatedAplicationResponse, InvestorApplicationReviewSchema
 )
 from app.users import current_active_user
 
 router = APIRouter(prefix="/applications", tags=["Funding Applications"])
 
 
-@router.post("/apply", response_model=ApplicationRead, status_code=status.HTTP_201_CREATED)
+@router.post("/create", response_model=ApplicationRead, status_code=status.HTTP_201_CREATED)
 async def create_funding_application(
     payload: ApplicationCreate,
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Submits a funding application for a LIVE investment package."""
     package = await session.get(InvestmentPackage, payload.package_id)
 
     if not package:
@@ -163,7 +162,7 @@ async def get_application_by_id(
     return application
 
 
-@router.put("/{application_id}/revise", response_model=ApplicationRead)
+@router.put("/revise/{application_id}", response_model=ApplicationRead)
 async def revise_funding_application(
     application_id: uuid.UUID,
     payload: ApplicationUpdateSchema,
@@ -210,6 +209,47 @@ async def revise_funding_application(
     application.status = ApplicationStatus.PENDING_ADMIN
     application.rejection_reason = None
     application.revision_note = None
+
+    await session.commit()
+    await session.refresh(application)
+    return application
+
+
+@router.patch("/investor-decision/{application_id}", response_model=ApplicationRead)
+async def investor_application_decision(
+    application_id: uuid.UUID,
+    payload: InvestorApplicationReviewSchema,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    result = await session.execute(
+        select(FundingApplication)
+        .join(InvestmentPackage, FundingApplication.package_id == InvestmentPackage.id)
+        .where(
+            FundingApplication.id == application_id,
+            InvestmentPackage.creator_id == user.id
+        )
+    )
+    application = result.scalars().first()
+
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Funding application not found or does not belong to any of your investment packages."
+        )
+
+    if application.status != ApplicationStatus.PENDING_INVESTOR:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot review application. Current status is '{application.status.value}', expected 'PENDING_INVESTOR'."
+        )
+
+    if payload.approved:
+        application.status = ApplicationStatus.APPROVED
+        application.rejection_reason = None
+    else:
+        application.status = ApplicationStatus.REJECTED
+        application.rejection_reason = payload.rejection_reason or "Application declined by investor."
 
     await session.commit()
     await session.refresh(application)
