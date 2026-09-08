@@ -116,7 +116,7 @@ async def get_investment_package_status(
     return result.scalars().all()
 
 
-@router.put("/revise/{package_id}", response_model=PackageReadSchema)
+@router.patch("/revise/{package_id}", response_model=PackageReadSchema)
 async def revise_investment_package(
     package_id: uuid.UUID,
     payload: PackageUpdateSchema,

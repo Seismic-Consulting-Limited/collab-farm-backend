@@ -74,3 +74,7 @@ class PaginatedAplicationResponse(BaseModel):
 class InvestorApplicationReviewSchema(BaseModel):
     approved: bool
     rejection_reason: Optional[str] = None
+
+class AdminAplicationReviewSchema(BaseModel):
+    approved: bool
+    rejection_reason: Optional[str] = None

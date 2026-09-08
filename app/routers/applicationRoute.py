@@ -12,9 +12,11 @@ from app.models.applicationModel import FundingApplication, ApplicationStatus
 from app.schemas.applicationSchema import (
     ApplicationCreate,
     ApplicationRead,
-    ApplicationUpdateSchema, PaginatedAplicationResponse, InvestorApplicationReviewSchema
+    ApplicationUpdateSchema, PaginatedAplicationResponse, InvestorApplicationReviewSchema, AdminAplicationReviewSchema
 )
 from app.users import current_active_user
+from datetime import datetime, timezone
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/applications", tags=["Funding Applications"])
 
@@ -162,7 +164,7 @@ async def get_application_by_id(
     return application
 
 
-@router.put("/revise/{application_id}", response_model=ApplicationRead)
+@router.patch("/revise/{application_id}", response_model=ApplicationRead)
 async def revise_funding_application(
     application_id: uuid.UUID,
     payload: ApplicationUpdateSchema,
@@ -254,3 +256,4 @@ async def investor_application_decision(
     await session.commit()
     await session.refresh(application)
     return application
+
