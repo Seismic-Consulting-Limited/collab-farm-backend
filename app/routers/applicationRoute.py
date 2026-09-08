@@ -12,7 +12,7 @@ from app.models.applicationModel import FundingApplication, ApplicationStatus
 from app.schemas.applicationSchema import (
     ApplicationCreate,
     ApplicationRead,
-    ApplicationUpdateSchema, PaginatedAplicationResponse, InvestorApplicationReviewSchema, AdminAplicationReviewSchema
+    ApplicationUpdateSchema, PaginatedAplicationResponse, InvestorApplicationReviewSchema, AdminApplicationReviewSchema
 )
 from app.users import current_active_user
 from datetime import datetime, timezone
@@ -217,6 +217,43 @@ async def revise_funding_application(
     return application
 
 
+@router.patch("/admin-decision/{application_id}", response_model=ApplicationRead)
+async def admin_application_decision(
+    application_id: uuid.UUID,
+    payload: AdminApplicationReviewSchema,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    result = await session.execute(
+        select(FundingApplication)
+        .join(InvestmentPackage, FundingApplication.package_id == InvestmentPackage.id)
+        .where(
+            FundingApplication.id == application_id,
+            InvestmentPackage.creator_id == user.id
+        )
+    )
+    application = result.scalars().first()
+
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=" Funding application not found")
+
+    if application.status != ApplicationStatus.PENDING_ADMIN:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Cannot review application. Current status is '{application.status.value}', expected 'PENDING_ADMIN'.")
+
+    if payload.approved:
+        application.status = ApplicationStatus.PENDING_INVESTOR
+        application.rejection_reason = None
+    else:
+        application.status = ApplicationStatus.REJECTED
+        application.rejection_reason = payload.rejection_reason or "Application declined by admin."
+
+    await session.commit()
+    await session.refresh(application)
+    return application
+
+
 @router.patch("/investor-decision/{application_id}", response_model=ApplicationRead)
 async def investor_application_decision(
     application_id: uuid.UUID,
@@ -256,4 +293,3 @@ async def investor_application_decision(
     await session.commit()
     await session.refresh(application)
     return application
-

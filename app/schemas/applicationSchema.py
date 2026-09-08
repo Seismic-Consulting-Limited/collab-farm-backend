@@ -75,6 +75,6 @@ class InvestorApplicationReviewSchema(BaseModel):
     approved: bool
     rejection_reason: Optional[str] = None
 
-class AdminAplicationReviewSchema(BaseModel):
+class AdminApplicationReviewSchema(BaseModel):
     approved: bool
     rejection_reason: Optional[str] = None
