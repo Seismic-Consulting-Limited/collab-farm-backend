@@ -1,121 +1,168 @@
-import json
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.userModel import User, InvestorType, VerificationStatus
-from app.models.profileModel import IndividualProfile, GroupProfile
-from app.users import current_unsubmitted_user
-from app.db import get_async_session
 from typing import Optional
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
-router = APIRouter(tags=["Investor Update Profile"])
+from app.db import get_async_session
+from app.models.profileModel import CooperativeProfile, GroupProfile, IndividualProfile
+from app.models.userModel import InvestorType, User, UserRole, VerificationStatus
+from app.users import current_active_user
+# Adjusted to your utility path
+from app.utils.cloudinary import upload_kyc_document
+
+router = APIRouter(prefix="/profile", tags=["Profile Management"])
 
 
 @router.post("/individual-investor", status_code=status.HTTP_201_CREATED)
-async def submit_individual_investor(
+async def submit_individual_profile(
     full_name: str = Form(...),
+    email: str = Form(...),
     phone_number: str = Form(...),
-    dob: str = Form(...),
-    nationality: str = Form(...),
-    residential_address: str = Form(...),
-    id_type: str = Form(...),
     id_number: str = Form(...),
-    investment_preferences: Optional[str] = Form(...),
-    id_doc_file: UploadFile = File(...),
-    user: User = Depends(current_unsubmitted_user),
-    db: AsyncSession = Depends(get_async_session)
+    nationality: str = Form(...),
+    id_file: UploadFile = File(...),
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
 ):
-    if user.investor_type != InvestorType.INDIVIDUAL:
+    if user.role == UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Account type mismatch. You are not registered as an individual investor."
+            detail="Admin accounts bypass profile verification.",
         )
 
-    id_doc_bytes = await id_doc_file.read()
+    if user.role != UserRole.INVESTOR or user.investor_type != InvestorType.INDIVIDUAL:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account type mismatch. You are not registered as an Individual Investor.",
+        )
 
-    new_profile = IndividualProfile(
+    id_file_res = await upload_kyc_document(id_file, "collabfarm/individual_ids")
+
+    profile = IndividualProfile(
         user_id=user.id,
         full_name=full_name,
+        email=email,
         phone_number=phone_number,
-        dob=dob,
-        nationality=nationality,
-        residential_address=residential_address,
-        id_type=id_type,
         id_number=id_number,
-        id_doc_file=id_doc_bytes,
-        id_doc_filename=id_doc_file.filename,
-        investment_preferences=investment_preferences
+        nationality=nationality,
+        id_file=id_file_res["secure_url"],
     )
 
-#    default investor type is individual
-    user.investor_type = InvestorType.INDIVIDUAL
     user.verification_status = VerificationStatus.APPROVED
 
-    db.add(new_profile)
+    db.add(profile)
     await db.commit()
     await db.refresh(user)
 
     return {
-        "message": "Individual KYC submitted successfully. Your account is pending admin review.",
-        "verification_status": user.verification_status
+        "status": "success",
+        "message": "Individual Investor profile submitted and account verified successfully.",
+        "verification_status": user.verification_status,
     }
 
 
 @router.post("/investment-group", status_code=status.HTTP_201_CREATED)
-async def submit_group_investor(
-    cooperative_name: str = Form(...),
-    cooperative_type: str = Form(...),
-    registration_number: str = Form(...),
+async def submit_group_profile(
+    company_name: str = Form(...),
+    company_address: str = Form(...),
     email: str = Form(...),
     phone_number: str = Form(...),
-    address: str = Form(...),
     year_established: int = Form(...),
-    rep_name: str = Form(...),
-    rep_contact: str = Form(...),
-    tax_id: str = Form(...),
-    senior_mgmt_list: Optional[str] = Form(None),
-    investment_preferences: Optional[str] = Form(None),
-    cac_cert_file: UploadFile = File(...),
-    rep_id_file: UploadFile = File(...),
-    user: User = Depends(current_unsubmitted_user),
-    db: AsyncSession = Depends(get_async_session)
+    company_registration_number: str = Form(...),
+    company_registration_file: UploadFile = File(...),
+    proof_of_address_file: UploadFile = File(...),
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
 ):
-    if user.investor_type != InvestorType.INVESTMENT_GROUP:
+    if user.role == UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Account type mismatch. You are not registered as an investment group."
+            detail="Admin accounts bypass profile verification.",
         )
 
-    cac_cert_bytes = await cac_cert_file.read()
-    rep_id_bytes = await rep_id_file.read()
+    if user.role != UserRole.INVESTOR or user.investor_type != InvestorType.INVESTMENT_GROUP:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account type mismatch. You are not registered as an Investment Group.",
+        )
 
-    new_profile = GroupProfile(
+    reg_file_res = await upload_kyc_document(company_registration_file, "collabfarm/group_registrations")
+    proof_file_res = await upload_kyc_document(proof_of_address_file, "collabfarm/group_proofs")
+
+    profile = GroupProfile(
         user_id=user.id,
-        cooperative_name=cooperative_name,
-        cooperative_type=cooperative_type,
-        registration_number=registration_number,
+        company_name=company_name,
+        company_address=company_address,
         email=email,
         phone_number=phone_number,
-        address=address,
         year_established=year_established,
-        rep_name=rep_name,
-        rep_contact=rep_contact,
-        senior_mgmt_list=senior_mgmt_list,
-        tax_id=tax_id,
-        cac_cert_file=cac_cert_bytes,
-        cac_cert_filename=cac_cert_file.filename,
-        rep_id_file=rep_id_bytes,
-        rep_id_filename=rep_id_file.filename,
-        investment_preferences=investment_preferences
+        company_registration_number=company_registration_number,
+        company_registration_file=reg_file_res["secure_url"],
+        proof_of_address_file=proof_file_res["secure_url"],
     )
 
-    user.investor_type = InvestorType.INVESTMENT_GROUP
     user.verification_status = VerificationStatus.APPROVED
 
-    db.add(new_profile)
+    db.add(profile)
     await db.commit()
     await db.refresh(user)
 
     return {
-        "message": "Investment Group KYC submitted successfully. Your account is pending admin review.",
-        "verification_status": user.verification_status
+        "status": "success",
+        "message": "Group Investment profile submitted and account verified successfully.",
+        "verification_status": user.verification_status,
+    }
+
+
+@router.post("/cooperative", status_code=status.HTTP_201_CREATED)
+async def submit_cooperative_profile(
+    cooperative_name: str = Form(...),
+    year_established: int = Form(...),
+    registration_number: str = Form(...),
+    email: str = Form(...),
+    address: str = Form(...),
+    lga: str = Form(...),
+    state: str = Form(...),
+    registration_certificate_file: UploadFile = File(...),
+    proof_of_address_file: UploadFile = File(...),
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    if user.role == UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admin accounts bypass profile verification.",
+        )
+
+    if user.role != UserRole.COOPERATIVE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account type mismatch. You are not registered as a Cooperative.",
+        )
+
+    cert_file_res = await upload_kyc_document(registration_certificate_file, "collabfarm/cooperative_certs")
+    proof_file_res = await upload_kyc_document(proof_of_address_file, "collabfarm/cooperative_proofs")
+
+    profile = CooperativeProfile(
+        user_id=user.id,
+        cooperative_name=cooperative_name,
+        year_established=year_established,
+        registration_number=registration_number,
+        email=email,
+        address=address,
+        lga=lga,
+        state=state,
+        registration_certificate_file=cert_file_res["secure_url"],
+        proof_of_address_file=proof_file_res["secure_url"],
+    )
+
+    user.verification_status = VerificationStatus.APPROVED
+
+    db.add(profile)
+    await db.commit()
+    await db.refresh(user)
+
+    return {
+        "status": "success",
+        "message": "Cooperative profile submitted and account verified successfully.",
+        "verification_status": user.verification_status,
     }

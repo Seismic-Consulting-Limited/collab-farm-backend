@@ -1,28 +1,42 @@
 import math
 import uuid
-from typing import Optional, List
-from fastapi import APIRouter, Depends, Query, status, HTTPException
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.db import get_async_session
-from app.models.userModel import User
-from app.schemas.packageschema import PackageCreate, PackageStatus, PackageRead, PaginatedPackageResponse, PackageReadSchema, PackageUpdateSchema, AdminPackageReviewSchema, InvestorDecisionSchema
 from app.models.packageModel import InvestmentPackage, PackageStatus, TrancheType
-from app.users import current_verified_investor, current_active_user
+from app.models.userModel import User, UserRole
+from app.schemas.packageschema import (
+    AdminPackageReview,
+    InvestorConfirmation,
+    PackageCreate,
+    PackageRead,
+    PackageUpdate,
+    PaginatedPackageResponse,
+)
+from app.users import current_active_user, current_verified_investor
 
 router = APIRouter(prefix="/packages", tags=["Investment Packages"])
 
 
-@router.post("/create-package", response_model=PackageRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=PackageRead, status_code=status.HTTP_201_CREATED)
 async def create_package(
     payload: PackageCreate,
     user: User = Depends(current_verified_investor),
     session: AsyncSession = Depends(get_async_session),
 ):
+    if user.role != UserRole.INVESTOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only verified investors can create investment packages.",
+        )
+
     package = InvestmentPackage(
         **payload.model_dump(),
         creator_id=user.id,
-        status=PackageStatus.PENDING,
+        status=PackageStatus.PENDING_ADMIN_REVIEW,
     )
     session.add(package)
     await session.commit()
@@ -30,30 +44,32 @@ async def create_package(
     return package
 
 
-@router.get("/get-packages", response_model=PaginatedPackageResponse)
+@router.get("", response_model=PaginatedPackageResponse)
 async def get_investment_packages(
-    search: Optional[str] = Query(
-        None, description="Search by package name or description"
-    ),
+    search: Optional[str] = Query(None, description="Search by package name"),
     status_filter: Optional[PackageStatus] = Query(None, alias="status"),
     tranche_filter: Optional[TrancheType] = Query(None, alias="tranche"),
+    my_packages_only: bool = Query(
+        False, description="Filter packages created by the current user"),
     sort_by: str = Query("newest", pattern="^(newest|oldest)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(12, ge=1, le=100),
-    user: User = Depends(current_verified_investor),
+    user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    query = select(InvestmentPackage).where(
-        InvestmentPackage.creator_id == user.id)
+    query = select(InvestmentPackage)
+
+    if user.role == UserRole.COOPERATIVE:
+        query = query.where(InvestmentPackage.status == PackageStatus.ACTIVE)
+    elif my_packages_only:
+        query = query.where(InvestmentPackage.creator_id == user.id)
 
     if search:
-        query = query.where(
-            InvestmentPackage.title.ilike(f"%{search}%")
-            | InvestmentPackage.description.ilike(f"%{search}%")
-        )
+        query = query.where(InvestmentPackage.name.ilike(f"%{search}%"))
 
-    if status_filter:
+    if status_filter and user.role != UserRole.COOPERATIVE:
         query = query.where(InvestmentPackage.status == status_filter)
+
     if tranche_filter:
         query = query.where(InvestmentPackage.tranche_type == tranche_filter)
 
@@ -81,7 +97,7 @@ async def get_investment_packages(
     )
 
 
-@router.get("/get-package-by-{package_id}", response_model=PackageRead)
+@router.get("/{package_id}", response_model=PackageRead)
 async def get_package_by_id(
     package_id: uuid.UUID,
     user: User = Depends(current_active_user),
@@ -95,38 +111,26 @@ async def get_package_by_id(
             detail=f"Investment package with ID '{package_id}' not found.",
         )
 
+    if user.role == UserRole.COOPERATIVE and package.status != PackageStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cooperatives can only view active investment packages.",
+        )
+
     return package
 
 
-@router.get("/my-packages-status", response_model=List[PackageReadSchema])
-async def get_investment_package_status(
-    status_filter: Optional[PackageStatus] = None,
-    user: User = Depends(current_active_user),
-    session: AsyncSession = Depends(get_async_session)
-):
-    query = select(InvestmentPackage).where(
-        InvestmentPackage.creator_id == user.id)
-
-    if status_filter:
-        query = query.where(InvestmentPackage.status == status_filter)
-
-    query = query.order_by(InvestmentPackage.created_at.desc())
-
-    result = await session.execute(query)
-    return result.scalars().all()
-
-
-@router.patch("/revise/{package_id}", response_model=PackageReadSchema)
+@router.patch("/revise/{package_id}", response_model=PackageRead)
 async def revise_investment_package(
     package_id: uuid.UUID,
-    payload: PackageUpdateSchema,
-    user: User = Depends(current_active_user),
-    session: AsyncSession = Depends(get_async_session)
+    payload: PackageUpdate,
+    user: User = Depends(current_verified_investor),
+    session: AsyncSession = Depends(get_async_session),
 ):
     result = await session.execute(
         select(InvestmentPackage).where(
             InvestmentPackage.id == package_id,
-            InvestmentPackage.creator_id == user.id
+            InvestmentPackage.creator_id == user.id,
         )
     )
     package = result.scalars().first()
@@ -134,47 +138,58 @@ async def revise_investment_package(
     if not package:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Investment package not found."
+            detail="Investment package not found or does not belong to you.",
         )
 
-    if package.status not in [PackageStatus.REJECTED, PackageStatus.PENDING]:
+    if package.status not in [PackageStatus.PENDING_ADMIN_REVIEW, PackageStatus.REJECTED]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot revise package with status '{package.status.value}'."
+            detail=f"Cannot revise package with status '{package.status.value}'.",
         )
 
     update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(package, field, value)
 
-    package.status = PackageStatus.PENDING
+    package.status = PackageStatus.PENDING_ADMIN_REVIEW
     package.rejection_reason = None
 
     await session.commit()
     await session.refresh(package)
-
     return package
 
 
-@router.patch("/admin-review/{package_id}", response_model=PackageReadSchema)
+@router.patch("/admin-review/{package_id}", response_model=PackageRead)
 async def admin_review_package(
     package_id: uuid.UUID,
-    payload: AdminPackageReviewSchema,
-    # i have to change this to super-admin later on
+    payload: AdminPackageReview,
     user: User = Depends(current_active_user),
-    session: AsyncSession = Depends(get_async_session)
+    session: AsyncSession = Depends(get_async_session),
 ):
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrator accounts can review investment packages.",
+        )
+
     package = await session.get(InvestmentPackage, package_id)
     if not package:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Investment package with ID '{package_id}' not found."
+            detail=f"Investment package with ID '{package_id}' not found.",
         )
-    if payload.status not in [PackageStatus.REVIEW, PackageStatus.REJECTED]:
+
+    if payload.status not in [PackageStatus.PENDING_INVESTOR_CONFIRMATION, PackageStatus.REJECTED]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Admin status update must be 'REVIEW' (Approved) or 'REJECTED'."
+            detail="Admin review status must be 'PENDING_INVESTOR_CONFIRMATION' or 'REJECTED'.",
         )
+
+    update_data = payload.model_dump(exclude_unset=True, exclude={
+                                     "status", "rejection_reason"})
+    for field, value in update_data.items():
+        setattr(package, field, value)
+
     package.status = payload.status
     if payload.rejection_reason:
         package.rejection_reason = payload.rejection_reason
@@ -184,36 +199,73 @@ async def admin_review_package(
     return package
 
 
-@router.patch("/final-decision/{package_id}", response_model=PackageReadSchema)
+@router.patch("/final-decision/{package_id}", response_model=PackageRead)
 async def investor_final_decision(
     package_id: uuid.UUID,
-    payload: InvestorDecisionSchema,
+    payload: InvestorConfirmation,
     user: User = Depends(current_verified_investor),
-    session: AsyncSession = Depends(get_async_session)
+    session: AsyncSession = Depends(get_async_session),
 ):
     result = await session.execute(
         select(InvestmentPackage).where(
             InvestmentPackage.id == package_id,
-            InvestmentPackage.creator_id == user.id
+            InvestmentPackage.creator_id == user.id,
         )
     )
     package = result.scalars().first()
+
     if not package:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Investment package not found or does not belong to you."
+            detail="Investment package not found or does not belong to you.",
         )
-    if package.status != PackageStatus.REVIEW:
+
+    if package.status != PackageStatus.PENDING_INVESTOR_CONFIRMATION:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot process decision. Package must be in 'REVIEW' status from admin. Current status: '{package.status.value}'."
+            detail=f"Package must be in 'PENDING_INVESTOR_CONFIRMATION' status. Current status: '{package.status.value}'.",
         )
-    if payload.approved:
-        package.status = PackageStatus.LIVE
+
+    if payload.confirm:
+        package.status = PackageStatus.ACTIVE
         package.rejection_reason = None
     else:
         package.status = PackageStatus.REJECTED
         package.rejection_reason = payload.rejection_reason or "Withdrawn by investor after admin review."
+
     await session.commit()
     await session.refresh(package)
     return package
+
+
+@router.delete("/{package_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_package(
+    package_id: uuid.UUID,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    package = await session.get(InvestmentPackage, package_id)
+    if not package:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Investment package with ID '{package_id}' not found.",
+        )
+
+    is_creator = package.creator_id == user.id
+    is_admin = user.role == UserRole.ADMIN
+
+    if not (is_creator or is_admin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to delete this investment package.",
+        )
+
+    if is_creator and package.status == PackageStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete an active investment package.",
+        )
+
+    await session.delete(package)
+    await session.commit()
+    return None

@@ -1,18 +1,22 @@
-from pydantic import BaseModel, EmailStr, ValidationError
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from fastapi_users.router.common import ErrorCode
-from pydantic import BaseModel, EmailStr
-from app.schemas.userSchema import UserRead, UserCreate, ForgotPasswordSchema, ResetPasswordSchema
-from fastapi_users.exceptions import UserAlreadyExists, UserNotExists
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi_users.exceptions import UserAlreadyExists, UserNotExists
 from fastapi_users.password import PasswordHelper
-from sqlalchemy.future import select
-from app.utils.emails import send_reset_email_background
+from fastapi_users.router.common import ErrorCode
+from pydantic import BaseModel, EmailStr, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+
 from app.db import get_async_session
-from app.users import get_user_manager, auth_backend, UserManager
 from app.models.userModel import User
+from app.schemas.userSchema import (
+    ForgotPasswordSchema,
+    ResetPasswordSchema,
+    UserCreate,
+    UserRead,
+)
+from app.users import UserManager, auth_backend, get_user_manager
+from app.utils.emails import send_reset_email_background
 from app.utils.security import generate_reset_token, verify_reset_token
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -33,7 +37,7 @@ class UserLogin(BaseModel):
 async def login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    user_manager=Depends(get_user_manager),
+    user_manager: UserManager = Depends(get_user_manager),
     strategy=Depends(auth_backend.get_strategy),
 ):
     content_type = request.headers.get("content-type", "")
@@ -68,7 +72,7 @@ async def login(
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 async def register(
     user_create: UserCreate,
-    user_manager=Depends(get_user_manager),
+    user_manager: UserManager = Depends(get_user_manager),
 ):
     try:
         return await user_manager.create(user_create)
@@ -83,7 +87,7 @@ async def register(
 async def forgot_password(
     payload: ForgotPasswordSchema,
     background_tasks: BackgroundTasks,
-    session: AsyncSession = Depends(get_async_session)
+    session: AsyncSession = Depends(get_async_session),
 ):
     result = await session.execute(select(User).where(User.email == payload.email))
     user = result.scalars().first()
@@ -94,21 +98,20 @@ async def forgot_password(
 
     return {
         "status": "success",
-        "message": "If an account with that email exists, a password reset link has been sent."
+        "message": "If an account with that email exists, a password reset link has been sent.",
     }
 
 
 @router.post("/reset-password")
 async def reset_password(
     payload: ResetPasswordSchema,
-    user_manager: UserManager = Depends(get_user_manager)
+    user_manager: UserManager = Depends(get_user_manager),
 ):
-
     email = verify_reset_token(payload.token, max_age=3600)
     if not email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The password reset link is invalid or has expired."
+            detail="The password reset link is invalid or has expired.",
         )
 
     try:
@@ -116,7 +119,7 @@ async def reset_password(
     except UserNotExists:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User account associated with this token was not found."
+            detail="User account associated with this token was not found.",
         )
 
     hashed_password = user_manager.password_helper.hash(payload.new_password)
@@ -124,5 +127,5 @@ async def reset_password(
 
     return {
         "status": "success",
-        "message": "Your password has been successfully reset. You can now log in."
+        "message": "Your password has been successfully reset. You can now log in.",
     }
