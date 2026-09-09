@@ -49,8 +49,6 @@ async def get_investment_packages(
     search: Optional[str] = Query(None, description="Search by package name"),
     status_filter: Optional[PackageStatus] = Query(None, alias="status"),
     tranche_filter: Optional[TrancheType] = Query(None, alias="tranche"),
-    my_packages_only: bool = Query(
-        False, description="Filter packages created by the current user"),
     sort_by: str = Query("newest", pattern="^(newest|oldest)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(12, ge=1, le=100),
@@ -59,10 +57,10 @@ async def get_investment_packages(
 ):
     query = select(InvestmentPackage)
 
-    if user.role == UserRole.COOPERATIVE:
-        query = query.where(InvestmentPackage.status == PackageStatus.ACTIVE)
-    elif my_packages_only:
+    if user.role == UserRole.INVESTOR:
         query = query.where(InvestmentPackage.creator_id == user.id)
+    elif user.role == UserRole.COOPERATIVE:
+        query = query.where(InvestmentPackage.status == PackageStatus.ACTIVE)
 
     if search:
         query = query.where(InvestmentPackage.name.ilike(f"%{search}%"))

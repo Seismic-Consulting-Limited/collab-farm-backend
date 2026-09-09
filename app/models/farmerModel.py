@@ -40,7 +40,7 @@ class Farmer(Base, TimestampMixin):
     )
     farm_size_acres: Mapped[float] = mapped_column(Float, nullable=False)
     farm_address: Mapped[str] = mapped_column(String, nullable=False)
-    photo: Mapped[str] = mapped_column(String, nullable=False)  # Cloudinary URL
+    photo: Mapped[str] = mapped_column(String, nullable=False) 
     additional_info: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     wrs_status: Mapped[WRSStatus] = mapped_column(
