@@ -1,32 +1,40 @@
 import math
 import uuid
+from decimal import Decimal
 from typing import Optional
-from fastapi import APIRouter, Depends, Query, status, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from decimal import Decimal
+
 from app.db import get_async_session
-from app.models.userModel import User
+from app.models.applicationModel import ApplicationStatus, FundingApplication
 from app.models.packageModel import InvestmentPackage, PackageStatus
-from app.models.applicationModel import FundingApplication, ApplicationStatus
+from app.models.userModel import User, UserRole
 from app.schemas.applicationSchema import (
+    AdminApplicationReview,
     ApplicationCreate,
     ApplicationRead,
-    ApplicationUpdateSchema, PaginatedAplicationResponse, InvestorApplicationReviewSchema, AdminApplicationReviewSchema
+    ApplicationUpdate,
+    InvestorApplicationReview,
+    PaginatedApplicationResponse,
 )
 from app.users import current_active_user
-from datetime import datetime, timezone
-from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/applications", tags=["Funding Applications"])
 
 
-@router.post("/create", response_model=ApplicationRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ApplicationRead, status_code=status.HTTP_201_CREATED)
 async def create_funding_application(
     payload: ApplicationCreate,
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
+    if user.role != UserRole.COOPERATIVE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only cooperatives can submit funding applications.",
+        )
+
     package = await session.get(InvestmentPackage, payload.package_id)
 
     if not package:
@@ -35,30 +43,33 @@ async def create_funding_application(
             detail="Target investment package not found.",
         )
 
-    if package.status != PackageStatus.LIVE:
+    if package.status != PackageStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot apply to a package that is not LIVE. Current status: '{package.status.value}'.",
+            detail=f"Cannot apply to a package that is not ACTIVE. Current status: '{package.status.value}'.",
         )
 
     if payload.requested_amount > Decimal(str(package.total_fund_amount)):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Requested amount exceeds total package funding limit of {package.total_fund_amount}.",
+            detail=f"Requested amount exceeds total package limit of {package.total_fund_amount}.",
         )
 
-    disbursement_data = [t.model_dump(mode="json")
-                         for t in payload.disbursement_plan]
-    farmer_ids = [fid for fid in payload.target_farmer_ids]
+    disbursement_data = (
+        [t.model_dump(mode="json") for t in payload.disbursement_plan]
+        if payload.disbursement_plan
+        else None
+    )
 
     application = FundingApplication(
         package_id=payload.package_id,
         cooperative_id=user.id,
         requested_amount=payload.requested_amount,
-        target_farmer_ids=farmer_ids,
+        tranche_type=payload.tranche_type,
+        target_farmer_ids=payload.target_farmer_ids,
         disbursement_plan=disbursement_data,
         notes=payload.notes,
-        status=ApplicationStatus.PENDING_ADMIN,
+        status=ApplicationStatus.PENDING_ADMIN_REVIEW,
     )
 
     session.add(application)
@@ -67,7 +78,7 @@ async def create_funding_application(
     return application
 
 
-@router.get("/my-applications", response_model=PaginatedAplicationResponse)
+@router.get("/my-applications", response_model=PaginatedApplicationResponse)
 async def get_cooperative_applications(
     status_filter: Optional[ApplicationStatus] = Query(None, alias="status"),
     page: int = Query(1, ge=1),
@@ -75,8 +86,14 @@ async def get_cooperative_applications(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    query = select(FundingApplication).where(
-        FundingApplication.cooperative_id == user.id)
+    query = select(FundingApplication)
+
+    if user.role == UserRole.COOPERATIVE:
+        query = query.where(FundingApplication.cooperative_id == user.id)
+    elif user.role == UserRole.INVESTOR:
+        query = query.join(
+            InvestmentPackage, FundingApplication.package_id == InvestmentPackage.id
+        ).where(InvestmentPackage.creator_id == user.id)
 
     if status_filter:
         query = query.where(FundingApplication.status == status_filter)
@@ -93,7 +110,7 @@ async def get_cooperative_applications(
     result = await session.execute(query)
     applications = result.scalars().all()
 
-    return PaginatedAplicationResponse(
+    return PaginatedApplicationResponse(
         items=applications,
         total=total,
         page=page,
@@ -102,7 +119,7 @@ async def get_cooperative_applications(
     )
 
 
-@router.get("/package/{package_id}", response_model=PaginatedAplicationResponse)
+@router.get("/package/{package_id}", response_model=PaginatedApplicationResponse)
 async def get_applications_for_package(
     package_id: uuid.UUID,
     page: int = Query(1, ge=1),
@@ -118,7 +135,7 @@ async def get_applications_for_package(
             detail="Investment package not found.",
         )
 
-    if package.creator_id != user.id:
+    if user.role != UserRole.ADMIN and package.creator_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not authorized to view applications for this package.",
@@ -138,7 +155,7 @@ async def get_applications_for_package(
     result = await session.execute(query)
     applications = result.scalars().all()
 
-    return PaginatedAplicationResponse(
+    return PaginatedApplicationResponse(
         items=applications,
         total=total,
         page=page,
@@ -161,13 +178,22 @@ async def get_application_by_id(
             detail="Funding application not found.",
         )
 
+    if (
+        user.role == UserRole.COOPERATIVE
+        and application.cooperative_id != user.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorized to view this application.",
+        )
+
     return application
 
 
 @router.patch("/revise/{application_id}", response_model=ApplicationRead)
 async def revise_funding_application(
     application_id: uuid.UUID,
-    payload: ApplicationUpdateSchema,
+    payload: ApplicationUpdate,
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -185,13 +211,7 @@ async def revise_funding_application(
             detail="Funding application not found or unauthorized.",
         )
 
-    allowed_statuses = [
-        ApplicationStatus.REVISION_REQUESTED,
-        ApplicationStatus.DRAFT,
-        ApplicationStatus.REJECTED,
-    ]
-
-    if application.status not in allowed_statuses:
+    if application.status != ApplicationStatus.REJECTED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot revise application in status '{application.status.value}'.",
@@ -208,7 +228,7 @@ async def revise_funding_application(
     for field, value in update_data.items():
         setattr(application, field, value)
 
-    application.status = ApplicationStatus.PENDING_ADMIN
+    application.status = ApplicationStatus.PENDING_ADMIN_REVIEW
     application.rejection_reason = None
     application.revision_note = None
 
@@ -220,34 +240,36 @@ async def revise_funding_application(
 @router.patch("/admin-decision/{application_id}", response_model=ApplicationRead)
 async def admin_application_decision(
     application_id: uuid.UUID,
-    payload: AdminApplicationReviewSchema,
+    payload: AdminApplicationReview,
     user: User = Depends(current_active_user),
-    session: AsyncSession = Depends(get_async_session)
+    session: AsyncSession = Depends(get_async_session),
 ):
-    result = await session.execute(
-        select(FundingApplication)
-        .join(InvestmentPackage, FundingApplication.package_id == InvestmentPackage.id)
-        .where(
-            FundingApplication.id == application_id,
-            InvestmentPackage.creator_id == user.id
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only system administrators can perform this review.",
         )
-    )
-    application = result.scalars().first()
+
+    application = await session.get(FundingApplication, application_id)
 
     if not application:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=" Funding application not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Funding application not found.",
+        )
 
-    if application.status != ApplicationStatus.PENDING_ADMIN:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Cannot review application. Current status is '{application.status.value}', expected 'PENDING_ADMIN'.")
+    if application.status != ApplicationStatus.PENDING_ADMIN_REVIEW:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot review application. Current status is '{application.status.value}', expected 'PENDING_ADMIN_REVIEW'.",
+        )
 
     if payload.approved:
-        application.status = ApplicationStatus.PENDING_INVESTOR
+        application.status = ApplicationStatus.PENDING_INVESTOR_REVIEW
         application.rejection_reason = None
     else:
         application.status = ApplicationStatus.REJECTED
-        application.rejection_reason = payload.rejection_reason or "Application declined by admin."
+        application.rejection_reason = payload.rejection_reason or "Application declined by system administrator."
 
     await session.commit()
     await session.refresh(application)
@@ -257,16 +279,16 @@ async def admin_application_decision(
 @router.patch("/investor-decision/{application_id}", response_model=ApplicationRead)
 async def investor_application_decision(
     application_id: uuid.UUID,
-    payload: InvestorApplicationReviewSchema,
+    payload: InvestorApplicationReview,
     user: User = Depends(current_active_user),
-    session: AsyncSession = Depends(get_async_session)
+    session: AsyncSession = Depends(get_async_session),
 ):
     result = await session.execute(
         select(FundingApplication)
         .join(InvestmentPackage, FundingApplication.package_id == InvestmentPackage.id)
         .where(
             FundingApplication.id == application_id,
-            InvestmentPackage.creator_id == user.id
+            InvestmentPackage.creator_id == user.id,
         )
     )
     application = result.scalars().first()
@@ -274,17 +296,17 @@ async def investor_application_decision(
     if not application:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Funding application not found or does not belong to any of your investment packages."
+            detail="Funding application not found or does not belong to any of your investment packages.",
         )
 
-    if application.status != ApplicationStatus.PENDING_INVESTOR:
+    if application.status != ApplicationStatus.PENDING_INVESTOR_REVIEW:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot review application. Current status is '{application.status.value}', expected 'PENDING_INVESTOR'."
+            detail=f"Cannot review application. Current status is '{application.status.value}', expected 'PENDING_INVESTOR_REVIEW'.",
         )
 
     if payload.approved:
-        application.status = ApplicationStatus.APPROVED
+        application.status = ApplicationStatus.ACCEPTED
         application.rejection_reason = None
     else:
         application.status = ApplicationStatus.REJECTED

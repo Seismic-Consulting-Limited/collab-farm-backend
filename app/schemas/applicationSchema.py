@@ -1,51 +1,59 @@
 import uuid
-from pydantic import BaseModel, Field, ConfigDict
+from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional, List, Any
-from datetime import datetime, date
 from enum import Enum
+from typing import Any, List, Optional
+from pydantic import BaseModel, ConfigDict, Field
+
 
 class ApplicationStatus(str, Enum):
-    DRAFT = "DRAFT"
-    PENDING_ADMIN = "PENDING_ADMIN"
-    REVISION_REQUESTED = "REVISION_REQUESTED"
-    PENDING_INVESTOR = "PENDING_INVESTOR"
-    APPROVED = "APPROVED"
+    PENDING_ADMIN_REVIEW = "PENDING_ADMIN_REVIEW"
+    PENDING_INVESTOR_REVIEW = "PENDING_INVESTOR_REVIEW"
+    ACCEPTED = "ACCEPTED"
     REJECTED = "REJECTED"
-    AGREEMENT_PENDING = "AGREEMENT_PENDING"
-    AGREEMENT_ACCEPTED = "AGREEMENT_ACCEPTED"
-    FUNDED = "FUNDED"
-    DISBURSING = "DISBURSING"
-    COMPLETED = "COMPLETED"
+
+
+class TrancheType(str, Enum):
+    SINGLE = "SINGLE"
+    MULTI = "MULTI"
 
 
 class TrancheDisbursementCreate(BaseModel):
-    tranche_number: int = Field(gt=0)
-    amount: Decimal = Field(gt=0)
+    tranche_number: int = Field(..., gt=0)
+    amount: Decimal = Field(..., gt=0)
     scheduled_date: date
     milestone_description: str
-
-class DisbursementTranchePlan(BaseModel):
-    tranche_number: int = Field(..., ge=1)
-    percentage: Decimal = Field(..., gt=0, le=100)
-    amount: Decimal = Field(..., ge=1)
-    description: Optional[str] = None
 
 
 class ApplicationCreate(BaseModel):
     package_id: uuid.UUID
     requested_amount: Decimal = Field(..., gt=0,
-                                      description="Funding By Cooperative in Naira",)
-    target_farmer_ids: Optional[List[uuid.UUID]] = None
-    notes: Optional[str]
-    disbursement_plan: List[TrancheDisbursementCreate]
-
-
-class ApplicationUpdateSchema(BaseModel):
-    requested_amount: Optional[Decimal] = Field(None, gt=0)
-    target_farmer_ids: Optional[List[uuid.UUID]] = None
-    disbursemnet_plan: Optional[List[DisbursementTranchePlan]] = None
+                                      description="Requested funding amount in Naira")
+    tranche_type: TrancheType = TrancheType.SINGLE
+    target_farmer_ids: List[uuid.UUID] = Field(
+        ..., min_length=1, description="List of farmer IDs under the cooperative")
+    disbursement_plan: Optional[List[TrancheDisbursementCreate]] = None
     notes: Optional[str] = None
+
+
+class ApplicationUpdate(BaseModel):
+    requested_amount: Optional[Decimal] = Field(None, gt=0)
+    tranche_type: Optional[TrancheType] = None
+    target_farmer_ids: Optional[List[uuid.UUID]] = Field(None, min_length=1)
+    disbursement_plan: Optional[List[TrancheDisbursementCreate]] = None
+    notes: Optional[str] = None
+
+
+class AdminApplicationReview(BaseModel):
+    approved: bool = Field(
+        ..., description="True forwards application to investor review; False rejects it")
+    rejection_reason: Optional[str] = None
+
+
+class InvestorApplicationReview(BaseModel):
+    approved: bool = Field(
+        ..., description="True marks application as ACCEPTED; False sets to REJECTED")
+    rejection_reason: Optional[str] = None
 
 
 class ApplicationRead(BaseModel):
@@ -53,28 +61,23 @@ class ApplicationRead(BaseModel):
     package_id: uuid.UUID
     cooperative_id: uuid.UUID
     requested_amount: Decimal
+    tranche_type: TrancheType
     target_farmer_ids: List[uuid.UUID]
-    disbursement_plan: Any
+    target_farmers_count: int
+    disbursement_plan: Optional[Any] = None
     status: ApplicationStatus
     rejection_reason: Optional[str] = None
-    revision_notes: Optional[str] = None
+    revision_note: Optional[str] = None
     notes: Optional[str] = None
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class PaginatedAplicationResponse(BaseModel):
+class PaginatedApplicationResponse(BaseModel):
     items: List[ApplicationRead]
     total: int
+    page: int
     page_size: int
     total_pages: int
-
-class InvestorApplicationReviewSchema(BaseModel):
-    approved: bool
-    rejection_reason: Optional[str] = None
-
-class AdminApplicationReviewSchema(BaseModel):
-    approved: bool
-    rejection_reason: Optional[str] = None
