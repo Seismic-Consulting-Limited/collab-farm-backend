@@ -49,14 +49,16 @@ class FundingApplication(Base, TimestampMixin):
     target_farmer_ids: Mapped[List[uuid.UUID]] = mapped_column(
         ARRAY(UUID(as_uuid=True)), nullable=False
     )
-    disbursement_plan: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
+    disbursement_plan: Mapped[Optional[Any]
+                              ] = mapped_column(JSONB, nullable=True)
 
     status: Mapped[ApplicationStatus] = mapped_column(
         SQLEnum(ApplicationStatus, native_enum=False),
         default=ApplicationStatus.PENDING_ADMIN_REVIEW,
         nullable=False,
     )
-    rejection_reason: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    rejection_reason: Mapped[Optional[str]
+                             ] = mapped_column(String, nullable=True)
     revision_note: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 

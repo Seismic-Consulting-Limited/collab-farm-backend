@@ -5,20 +5,24 @@ from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, Field
 
+
 class DisbursementStatus(str, Enum):
     PENDING = "PENDING"
     MILESTONE_SUBMITTED = "MILESTONE_SUBMITTED"
     DISBURSED = "DISBURSED"
     FAILED = "FAILED"
-    
+
+
 class MilestoneSubmitSchema(BaseModel):
     milestone_proof_url: str
     notes: Optional[str] = None
 
+
 class DisbursementReleaseSchema(BaseModel):
     transaction_reference: str
     notes: Optional[str] = None
-    
+
+
 class DisbursementReadSchema(BaseModel):
     id: uuid.UUID
     application_id: uuid.UUID
@@ -28,5 +32,5 @@ class DisbursementReadSchema(BaseModel):
     milestone_description: str
     disbursement_status: DisbursementStatus
     milestone_proof_url: Optional[str] = None
-    transaction_reference: Optional[str] =None
+    transaction_reference: Optional[str] = None
     disbursed_at: Optional[datetime] = None

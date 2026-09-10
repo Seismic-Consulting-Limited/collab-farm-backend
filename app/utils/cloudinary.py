@@ -16,7 +16,7 @@ cloudinary.config(
 
 
 async def upload_kyc_document(file: UploadFile, folder_path: str) -> dict:
- 
+
     file_bytes = await file.read()
 
     response = await asyncio.to_thread(

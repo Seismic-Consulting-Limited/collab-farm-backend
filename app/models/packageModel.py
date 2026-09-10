@@ -48,6 +48,7 @@ class InvestmentPackage(Base, TimestampMixin):
         default=PackageStatus.PENDING_ADMIN_REVIEW,
         nullable=False,
     )
-    rejection_reason: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    rejection_reason: Mapped[Optional[str]
+                             ] = mapped_column(String, nullable=True)
 
     creator: Mapped["User"] = relationship("User")

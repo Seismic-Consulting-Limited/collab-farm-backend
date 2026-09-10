@@ -24,11 +24,12 @@ class UserCreate(schemas.BaseUserCreate):
     investor_type: InvestorType | None = None
     verification_status: VerificationStatus = VerificationStatus.NOT_SUBMITTED
 
+
 @model_validator(mode="after")
 def handle_role_defaults(self):
     if self.role != UserRole.INVESTOR:
         self.investor_type = None
-    
+
     if self.role == UserRole.ADMIN:
         self.verification_status == VerificationStatus.APPROVED
     elif self.role == UserRole.INVESTOR and self.investor_type is None:

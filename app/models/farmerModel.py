@@ -40,8 +40,9 @@ class Farmer(Base, TimestampMixin):
     )
     farm_size_acres: Mapped[float] = mapped_column(Float, nullable=False)
     farm_address: Mapped[str] = mapped_column(String, nullable=False)
-    photo: Mapped[str] = mapped_column(String, nullable=False) 
-    additional_info: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    photo: Mapped[str] = mapped_column(String, nullable=False)
+    additional_info: Mapped[Optional[str]
+                            ] = mapped_column(String, nullable=True)
 
     wrs_status: Mapped[WRSStatus] = mapped_column(
         SQLEnum(WRSStatus, native_enum=False),
@@ -49,4 +50,5 @@ class Farmer(Base, TimestampMixin):
         nullable=False,
     )
 
-    cooperative: Mapped["User"] = relationship("User", back_populates="farmers")
+    cooperative: Mapped["User"] = relationship(
+        "User", back_populates="farmers")

@@ -72,14 +72,14 @@ class User(SQLAlchemyBaseUserTableUUID, Base, TimestampMixin):
     group_profile: Mapped[Optional["GroupProfile"]] = relationship(
         "GroupProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"
     )
-    
+
     cooperative_profile: Mapped[Optional["CooperativeProfile"]] = relationship(
-    "CooperativeProfile", back_populates="user", uselist=False
+        "CooperativeProfile", back_populates="user", uselist=False
     )
-    
+
     farmers: Mapped[list["Farmer"]] = relationship(
-    "Farmer", back_populates="cooperative", cascade="all, delete-orphan")
-    
+        "Farmer", back_populates="cooperative", cascade="all, delete-orphan")
+
     oauth_accounts: Mapped[list[OAuthAccount]] = relationship(
-    "OAuthAccount", lazy="joined", cascade="all, delete-orphan"
+        "OAuthAccount", lazy="joined", cascade="all, delete-orphan"
     )

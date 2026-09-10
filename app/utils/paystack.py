@@ -12,6 +12,7 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
+
 async def create_transfer_recipient(name: str, account_number: str, bank_code: str) -> str:
     if MOCK_PAYSTACK:
         return f"RCP_mock_{uuid.uuid4().hex[:8]}"

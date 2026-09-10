@@ -161,7 +161,6 @@ async def get_wallet_transactions(
 
 # used mock paystack withdrawal, because my paystack is not verified
 
-
 @router.post("/withdraw")
 async def withdraw_funds(
     payload: WithdrawalRequestSchema,

@@ -12,8 +12,10 @@ class IndividualProfileBase(BaseModel):
     id_file: str
     nationality: str
 
+
 class IndividualProfileCreate(IndividualProfileBase):
     pass
+
 
 class IndividualProfileUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -40,11 +42,13 @@ class GroupProfileBase(BaseModel):
     phone_number: str
     year_established: int
     company_registration_number: str
-    company_registration_file: str 
-    proof_of_address_file: str 
+    company_registration_file: str
+    proof_of_address_file: str
+
 
 class GroupProfileCreate(GroupProfileBase):
     pass
+
 
 class GroupProfileUpdate(BaseModel):
     company_name: Optional[str] = None
@@ -56,6 +60,7 @@ class GroupProfileUpdate(BaseModel):
     company_registration_file: Optional[str] = None
     proof_of_address_file: Optional[str] = None
 
+
 class GroupProfileRead(GroupProfileBase):
     id: uuid.UUID
     user_id: uuid.UUID
@@ -63,6 +68,7 @@ class GroupProfileRead(GroupProfileBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class CooperativeProfileBase(BaseModel):
     cooperative_name: str
@@ -75,8 +81,10 @@ class CooperativeProfileBase(BaseModel):
     registration_certificate_file: str
     proof_of_address_file: str
 
+
 class CooperativeProfileCreate(CooperativeProfileBase):
     pass
+
 
 class CooperativeProfileUpdate(BaseModel):
     cooperative_name: Optional[str] = None
@@ -88,6 +96,7 @@ class CooperativeProfileUpdate(BaseModel):
     state: Optional[str] = None
     registration_certificate_file: Optional[str] = None
     proof_of_address_file: Optional[str] = None
+
 
 class CooperativeProfileRead(CooperativeProfileBase):
     id: uuid.UUID

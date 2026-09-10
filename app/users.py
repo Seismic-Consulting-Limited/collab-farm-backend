@@ -47,13 +47,13 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         safe: bool = False,
         request: Optional[Request] = None,
     ) -> User:
-        
+
         if getattr(user_create, "role", None) != UserRole.INVESTOR:
             user_create.investor_type = None
-        
+
         if getattr(user_create, "role", None) == UserRole.ADMIN:
             user_create.verification_status = VerificationStatus.APPROVED
-        
+
         return await super().create(user_create, safe=safe, request=request)
 
     async def on_after_register(self, user: User, request: Optional[Request] = None):
