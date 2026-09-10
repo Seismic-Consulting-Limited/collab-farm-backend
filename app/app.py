@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
     await create_db_and_tables()
     yield
 
-app = FastAPI(title="Collab Farm", debug=True, lifespan=lifespan)
+app = FastAPI(title="CollabFarm Backend", debug=True, lifespan=lifespan)
 
 origins = [
     "http://localhost:3000",
