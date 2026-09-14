@@ -3,6 +3,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
+from decimal import Decimal
 
 
 class TrancheType(str, Enum):
@@ -28,7 +29,7 @@ class PackageCreate(BaseModel):
 
 class PackageUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=3, max_length=200)
-    total_fund_amount: Optional[float] = Field(None, gt=0)
+    total_fund_amount: Optional[Decimal] = Field(None, gt=0)
     tenure: Optional[int] = Field(None, gt=0)
     expected_roi: Optional[float] = Field(None, gt=0)
     tranche_type: Optional[TrancheType] = None

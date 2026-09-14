@@ -14,7 +14,6 @@ class TrancheType(str, enum.Enum):
 
 class PackageStatus(str, enum.Enum):
     PENDING_ADMIN_REVIEW = "PENDING_ADMIN_REVIEW"
-    PENDING_INVESTOR_CONFIRMATION = "PENDING_INVESTOR_CONFIRMATION"
     ACTIVE = "ACTIVE"
     REJECTED = "REJECTED"
 
