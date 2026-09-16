@@ -17,7 +17,6 @@ router = APIRouter(prefix="/farmers", tags=["Farmer Directory"])
 
 
 async def fetch_farmer_with_relations(db: AsyncSession, farmer_id: uuid.UUID) -> Farmer:
-    """Helper to fetch a farmer with eager-loaded cooperative user and profile details."""
     result = await db.execute(
         select(Farmer)
         .options(

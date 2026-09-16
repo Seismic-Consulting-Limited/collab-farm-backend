@@ -10,13 +10,12 @@ from app.models.packageModel import InvestmentPackage, PackageStatus, TrancheTyp
 from app.models.userModel import User, UserRole
 from app.schemas.packageschema import (
     AdminPackageReview,
-    InvestorConfirmation,
     PackageCreate,
     PackageRead,
     PackageUpdate,
     PaginatedPackageResponse,
 )
-from app.users import current_active_user, current_verified_investor, current_cooperative_user
+from app.users import current_active_user, current_cooperative_user
 
 router = APIRouter(prefix="/packages", tags=["Investment Packages"])
 
