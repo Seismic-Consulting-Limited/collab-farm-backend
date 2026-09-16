@@ -1,79 +1,143 @@
+# app/schemas/packageSchema.py
 import uuid
-from datetime import datetime
-from enum import Enum
-from typing import Optional
-from pydantic import BaseModel, ConfigDict, Field
-from decimal import Decimal
+from datetime import date, datetime
+from typing import List, Optional
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
-
-class TrancheType(str, Enum):
-    SINGLE = "SINGLE"
-    MULTI = "MULTI"
-
-
-class PackageStatus(str, Enum):
-    PENDING_ADMIN_REVIEW = "PENDING_ADMIN_REVIEW"
-    PENDING_INVESTOR_CONFIRMATION = "PENDING_INVESTOR_CONFIRMATION"
-    ACTIVE = "ACTIVE"
-    REJECTED = "REJECTED"
+from app.models.packageModel import (
+    FarmerPackageStatus,
+    PackageCategory,
+    PackageStatus,
+    PackageType,
+)
+from app.models.userModel import InvestorType
 
 
 class PackageCreate(BaseModel):
-    name: str = Field(..., min_length=3, max_length=200)
-    total_fund_amount: float = Field(..., gt=0)
-    tenure: int = Field(..., gt=0, description="Tenure duration in months")
-    expected_roi: float = Field(..., gt=0,
-                                description="Expected ROI percentage")
-    tranche_type: TrancheType = TrancheType.SINGLE
+    title: str
+    package_type: PackageType
+    category: PackageCategory
+    fund_amount: float
+    farming_cycle: str
+    short_description: str
+    tenure_months: int
+    expected_payback_date: date
+    expected_roi: float = Field(..., description="Percentage ROI e.g. 15.0")
+    cooperative_share: float = Field(...,
+                                     description="Cooperative cut % e.g. 5.0")
+
+    @model_validator(mode="after")
+    def validate_fund_amount_by_type(self):
+        min_amounts = {
+            PackageType.STARTER: 1_000_000.0,
+            PackageType.GROWTH: 3_000_000.0,
+            PackageType.COMMERCIAL: 5_000_000.0,
+        }
+        min_required = min_amounts.get(self.package_type, 0.0)
+        if self.fund_amount < min_required:
+            raise ValueError(
+                f"Fund amount for {self.package_type.value} must be at least ₦{min_required:,.2f}"
+            )
+        return self
 
 
-class PackageUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=3, max_length=200)
-    total_fund_amount: Optional[Decimal] = Field(None, gt=0)
-    tenure: Optional[int] = Field(None, gt=0)
-    expected_roi: Optional[float] = Field(None, gt=0)
-    tranche_type: Optional[TrancheType] = None
+class AssignFarmerSchema(BaseModel):
+    farmer_id: uuid.UUID
+    allocated_amount: float
+    payout_date: Optional[date] = None
+    payback_date: Optional[date] = None
 
 
-class AdminPackageReview(BaseModel):
-    name: Optional[str] = Field(None, min_length=3, max_length=200)
-    total_fund_amount: Optional[float] = Field(None, gt=0)
-    tenure: Optional[int] = Field(None, gt=0)
-    expected_roi: Optional[float] = Field(None, gt=0)
-    tranche_type: Optional[TrancheType] = None
-    status: PackageStatus = Field(
-        ...,
-        description="Must be PENDING_INVESTOR_CONFIRMATION or REJECTED",
-    )
-    rejection_reason: Optional[str] = None
-
-
-class InvestorConfirmation(BaseModel):
-    confirm: bool = Field(
-        ..., description="True sets status to ACTIVE, False sets status to REJECTED"
-    )
-    rejection_reason: Optional[str] = None
-
-
-class PackageRead(BaseModel):
+class PackageFarmerDetail(BaseModel):
     id: uuid.UUID
-    creator_id: uuid.UUID
-    name: str
-    total_fund_amount: float
-    tenure: int
-    expected_roi: float
-    tranche_type: TrancheType
-    status: PackageStatus
-    rejection_reason: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    farmer_id: uuid.UUID
+    allocated_amount: float
+    progress_percentage: float
+    payout_date: Optional[date] = None
+    payback_date: Optional[date] = None
+    status: FarmerPackageStatus
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class PaginatedPackageResponse(BaseModel):
-    items: list[PackageRead]
-    total: int
-    page: int
-    page_size: int
-    total_pages: int
+class PackageInvestorDetail(BaseModel):
+    id: uuid.UUID
+    investor_id: uuid.UUID
+    amount: float
+    invested_at: datetime = Field(..., alias="created_at")
+    payback_due_date: date
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class PackageFinancialSummary(BaseModel):
+    total_money_invested: float
+    total_disbursed_to_farmers: float
+    remaining_balance: float
+
+
+class PackageDetailRead(BaseModel):
+    id: uuid.UUID
+    cooperative_id: uuid.UUID
+    title: str
+    package_type: PackageType
+    category: PackageCategory
+    farming_cycle: str
+    short_description: str
+    fund_amount: float
+    tenure_months: int
+    expected_payback_date: date
+    expected_roi: float
+    cooperative_share: float
+    status: PackageStatus
+    financial_summary: PackageFinancialSummary
+    assigned_farmers: List[PackageFarmerDetail]
+    investors: List[PackageInvestorDetail]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PackageInvestorResponse(BaseModel):
+    id: uuid.UUID
+    investor_id: uuid.UUID
+    investor_name: str
+    email: EmailStr
+    investor_type: Optional[InvestorType] = None
+    amount: float
+    invested_at: datetime
+    payback_due_date: date
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PackageRead(BaseModel):
+    id: uuid.UUID
+    cooperative_id: uuid.UUID
+    title: str
+    package_type: PackageType
+    category: PackageCategory
+    fund_amount: float
+    farming_cycle: str
+    short_description: str
+    tenure_months: int
+    expected_payback_date: date
+    expected_roi: float
+    cooperative_share: float
+    status: PackageStatus
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PackageUpdate(BaseModel):
+    title: Optional[str] = None
+    package_type: Optional[PackageType] = None
+    category: Optional[PackageCategory] = None
+    fund_amount: Optional[float] = None
+    farming_cycle: Optional[str] = None
+    short_description: Optional[str] = None
+    tenure_months: Optional[int] = None
+    expected_payback_date: Optional[date] = None
+    expected_roi: Optional[float] = None
+    cooperative_share: Optional[float] = None
+    status: Optional[PackageStatus] = None
