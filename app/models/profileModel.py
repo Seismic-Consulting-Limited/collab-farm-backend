@@ -1,5 +1,5 @@
 import uuid
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -33,6 +33,7 @@ class IndividualProfile(Base, TimestampMixin):
         "User", back_populates="individual_profile"
     )
 
+
 class GroupProfile(Base, TimestampMixin):
     __tablename__ = "group_profiles"
 
@@ -52,9 +53,11 @@ class GroupProfile(Base, TimestampMixin):
     phone_number: Mapped[str] = mapped_column(String, nullable=False)
     year_established: Mapped[int] = mapped_column(Integer, nullable=False)
     company_registration_number: Mapped[str] = mapped_column(
-        String, nullable=False)
+        String, nullable=False
+    )
     company_registration_file: Mapped[str] = mapped_column(
-        String, nullable=False)
+        String, nullable=False
+    )
     proof_of_address_file: Mapped[str] = mapped_column(String, nullable=False)
 
     user: Mapped["User"] = relationship("User", back_populates="group_profile")
@@ -81,9 +84,12 @@ class CooperativeProfile(Base, TimestampMixin):
     lga: Mapped[str] = mapped_column(String, nullable=False)
     state: Mapped[str] = mapped_column(String, nullable=False)
     registration_certificate_file: Mapped[str] = mapped_column(
-        String, nullable=False)
+        String, nullable=False
+    )
     proof_of_address_file: Mapped[str] = mapped_column(
-        String, nullable=False)
+        String, nullable=False
+    )
 
     user: Mapped["User"] = relationship(
-        "User", back_populates="cooperative_profile")
+        "User", back_populates="cooperative_profile"
+    )

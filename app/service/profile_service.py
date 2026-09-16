@@ -25,10 +25,10 @@ class ProfileService:
                 detail="Admin accounts bypass profile verification.",
             )
 
-        if user.role != UserRole.INVESTOR or user.investor_type != InvestorType.INDIVIDUAL:
+        if user.role != UserRole.INVESTOR:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Account type mismatch. You are not registered as an Individual Investor.",
+                detail="Account type mismatch. You are not registered as an Investor.",
             )
 
         id_file_res = await upload_kyc_document(id_file, "collabfarm/individual_ids")
@@ -43,6 +43,7 @@ class ProfileService:
             id_file=id_file_res["secure_url"],
         )
 
+        user.investor_type = InvestorType.INDIVIDUAL
         user.verification_status = VerificationStatus.APPROVED
 
         self.db.add(profile)
@@ -73,10 +74,10 @@ class ProfileService:
                 detail="Admin accounts bypass profile verification.",
             )
 
-        if user.role != UserRole.INVESTOR or user.investor_type != InvestorType.INVESTMENT_GROUP:
+        if user.role != UserRole.INVESTOR:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Account type mismatch. You are not registered as an Investment Group.",
+                detail="Account type mismatch. You are not registered as an Investor.",
             )
 
         reg_file_res = await upload_kyc_document(
@@ -98,6 +99,7 @@ class ProfileService:
             proof_of_address_file=proof_file_res["secure_url"],
         )
 
+        user.investor_type = InvestorType.INVESTMENT_GROUP
         user.verification_status = VerificationStatus.APPROVED
 
         self.db.add(profile)

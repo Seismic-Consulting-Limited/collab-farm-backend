@@ -21,23 +21,15 @@ class UserCreate(schemas.BaseUserCreate):
     last_name: str | None = None
     phone_number: str | None = None
     role: UserRole
-    investor_type: InvestorType | None = None
     verification_status: VerificationStatus = VerificationStatus.NOT_SUBMITTED
 
-
-@model_validator(mode="after")
-def handle_role_defaults(self):
-    if self.role != UserRole.INVESTOR:
-        self.investor_type = None
-
-    if self.role == UserRole.ADMIN:
-        self.verification_status == VerificationStatus.APPROVED
-    elif self.role == UserRole.INVESTOR and self.investor_type is None:
-        self.investor_type = InvestorType.INDIVIDUAL
-        self.verification_status = VerificationStatus.NOT_SUBMITTED
-    else:
-        self.verification_status = VerificationStatus.NOT_SUBMITTED
-    return self
+    @model_validator(mode="after")
+    def handle_role_defaults(self):
+        if self.role == UserRole.ADMIN:
+            self.verification_status = VerificationStatus.APPROVED
+        else:
+            self.verification_status = VerificationStatus.NOT_SUBMITTED
+        return self
 
 
 class UserUpdate(schemas.BaseUserUpdate):
@@ -61,5 +53,6 @@ class ForgotPasswordSchema(BaseModel):
 
 class ResetPasswordSchema(BaseModel):
     token: str
-    new_password: str = Field(..., min_length=8,
-                              description="Enter New Password")
+    new_password: str = Field(
+        ..., min_length=8, description="Enter New Password"
+    )

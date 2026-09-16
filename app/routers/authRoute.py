@@ -1,3 +1,4 @@
+# app/routers/auth.py
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
