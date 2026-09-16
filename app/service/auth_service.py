@@ -11,6 +11,7 @@ from app.schemas.userSchema import (
     ForgotPasswordSchema,
     ResetPasswordSchema,
     UserCreate,
+    ChangePassword
 )
 from app.utils.emails import send_reset_email_background
 from app.utils.security import generate_reset_token, verify_reset_token
@@ -115,4 +116,24 @@ class AuthService:
         return {
             "status": "success",
             "message": "Your password has been successfully reset. You can now log in.",
+        }
+    
+    async def change_password(self, user: User, payload: ChangePassword) -> dict:
+        is_valid, _ = self.user_manager.password_helper.verify_and_update(
+            payload.current_password, user.hashed_password
+        )
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Incorrect current password.",
+            )
+
+        new_hashed_password = self.user_manager.password_helper.hash(payload.new_password)
+        await self.user_manager.user_db.update(
+            user, {"hashed_password": new_hashed_password}
+        )
+
+        return {
+            "status": "success",
+            "message": "Your password has been changed successfully.",
         }

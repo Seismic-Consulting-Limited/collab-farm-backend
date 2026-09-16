@@ -3,7 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_async_session
 from app.models.userModel import User
 from app.service.profile_service import ProfileService
-from app.users import current_active_user
+from app.users import current_active_user, get_user_manager, UserManager
+from app.service.auth_service import AuthService
+from app.schemas.userSchema import ChangePassword
 
 router = APIRouter(prefix="/profile", tags=["Profile Management"])
 
@@ -81,4 +83,15 @@ async def submit_cooperative_profile(
         state=state,
         registration_certificate_file=registration_certificate_file,
         proof_of_address_file=proof_of_address_file,
+    )
+
+
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+async def change_password(
+    payload: ChangePassword,
+    user: User = Depends(current_active_user),
+    user_manager: UserManager = Depends(get_user_manager),
+):
+    return await AuthService(user_manager=user_manager).change_password(
+        user=user, payload=payload
     )
