@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 from pydantic import BaseModel, ConfigDict, EmailStr
+from app.schemas.userSchema import UserRole, InvestorType, VerificationStatus
 
 
 class IndividualProfileBase(BaseModel):
@@ -103,5 +104,16 @@ class CooperativeProfileRead(CooperativeProfileBase):
     user_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
 
+class UserProfile(BaseModel):
+    id: uuid.UUID
+    email: EmailStr
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    role: UserRole
+    investor_type: Optional[InvestorType]
+    verification_status: VerificationStatus
+    profile: Optional[Union[IndividualProfileRead, GroupProfileRead, CooperativeProfileRead]] = None
     model_config = ConfigDict(from_attributes=True)

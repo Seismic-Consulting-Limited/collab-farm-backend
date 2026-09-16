@@ -1,8 +1,12 @@
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.profileModel import CooperativeProfile, GroupProfile, IndividualProfile
+from app.schemas.profileSchema import UserProfile
 from app.models.userModel import InvestorType, User, UserRole, VerificationStatus
 from app.utils.cloudinary import upload_kyc_document
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+import uuid
 
 
 class ProfileService:
@@ -168,3 +172,40 @@ class ProfileService:
             "message": "Cooperative profile submitted and account verified successfully.",
             "verification_status": user.verification_status,
         }
+    
+    async def get_user_profile(self, user_id: uuid.UUID) -> UserProfile:
+        query = (
+            select(User)
+            .options(
+                selectinload(User.individual_profile),
+                selectinload(User.group_profile),
+                selectinload(User.cooperative_profile),
+            )
+            .where(User.id == user_id)
+        )
+        result = await self.db.execute(query)
+        user = result.scalars().first()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User account not found.",
+            )
+
+        active_profile = (
+            user.individual_profile
+            or user.group_profile
+            or user.cooperative_profile
+        )
+
+        return UserProfile(
+            id=user.id,
+            email=user.email,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            phone_number=user.phone_number,
+            role=user.role,
+            investor_type=user.investor_type,
+            verification_status=user.verification_status,
+            profile=active_profile,
+        )
