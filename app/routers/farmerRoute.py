@@ -75,7 +75,7 @@ async def get_farmer_profile(
     return await FarmerService(db).get_farmer_profile(farmer_id)
 
 
-@router.put("/{farmer_id}", response_model=FarmerRead)
+@router.patch("/{farmer_id}", response_model=FarmerRead)
 async def update_farmer(
     farmer_id: uuid.UUID,
     full_name: Optional[str] = Form(None),
