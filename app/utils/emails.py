@@ -1,7 +1,6 @@
-# app/utils/emails.py
 import os
-from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from fastapi import BackgroundTasks
+from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from pydantic import EmailStr
 
 conf = ConnectionConfig(
@@ -41,6 +40,55 @@ async def send_welcome_email(
 
     fm = FastMail(conf)
     await fm.send_message(message)
+
+
+def send_verification_email_background(
+    email: str,
+    token: str,
+    background_tasks: BackgroundTasks
+):
+    # added a test section for verifying emails 
+    print("\n" + "=" * 60)
+    print(f"LOCAL TEST - VERIFICATION TOKEN FOR {email}:")
+    print(f"{token}")
+    print(
+        f"Direct Swagger Link: http://localhost:8000/auth/verify-email?token={token}")
+    print("=" * 60 + "\n")
+
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:8000/auth")
+
+    if "localhost:8000" in frontend_url:
+        verification_link = f"{frontend_url}/verify-email?token={token}"
+    else:
+        verification_link = f"{frontend_url}/verify-email?token={token}"
+
+    html_content = f"""
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <h2>Verify Your Email Address</h2>
+        <p>Thank you for signing up with CollabFarm! Please click the button below to verify your email address and activate your account:</p>
+        
+        <p style="margin-top: 20px;">
+            <a href="{verification_link}" style="background-color: #2e7d32; color: #ffffff; padding: 10px 18px; text-decoration: none; border-radius: 4px; display: inline-block;">
+                Verify Email
+            </a>
+        </p>
+
+        <p style="font-size: 12px; color: #777;">
+            Direct Link: <a href="{verification_link}">{verification_link}</a>
+        </p>
+        <p style="font-size: 12px; color: #777;">This link will expire in 24 hours. If you did not create an account, please ignore this email.</p>
+    </div>
+    """
+
+    message = MessageSchema(
+        subject="Verify Your Email - CollabFarm",
+        recipients=[email],
+        body=html_content,
+        subtype=MessageType.html,
+    )
+
+    fm = FastMail(conf)
+    background_tasks.add_task(fm.send_message, message)
 
 
 def send_reset_email_background(email: str, token: str, background_tasks: BackgroundTasks):

@@ -2,8 +2,7 @@ from collections.abc import AsyncGenerator
 import os
 from dotenv import load_dotenv
 from fastapi import Depends
-from fastapi_users.db import SQLAlchemyUserDatabase
-from sqlalchemy import text
+from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from app.models.userModel import Base, OAuthAccount, User
 

@@ -21,6 +21,7 @@ class UserCreate(schemas.BaseUserCreate):
     last_name: str | None = None
     phone_number: str | None = None
     role: UserRole
+    investor_type: InvestorType | None = None
     verification_status: VerificationStatus = VerificationStatus.NOT_SUBMITTED
 
     @model_validator(mode="after")
@@ -29,6 +30,10 @@ class UserCreate(schemas.BaseUserCreate):
             self.verification_status = VerificationStatus.APPROVED
         else:
             self.verification_status = VerificationStatus.NOT_SUBMITTED
+
+        if self.role != UserRole.INVESTOR:
+            self.investor_type = None
+
         return self
 
 

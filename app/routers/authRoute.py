@@ -1,5 +1,6 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_async_session
@@ -30,9 +31,31 @@ async def login(
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 async def register(
     user_create: UserCreate,
+    background_tasks: BackgroundTasks,
     user_manager: UserManager = Depends(get_user_manager),
 ):
-    return await AuthService(user_manager=user_manager).register(user_create)
+    return await AuthService(user_manager=user_manager).register(
+        user_create, background_tasks
+    )
+
+
+@router.get("/verify-email", status_code=status.HTTP_200_OK)
+async def verify_email(
+    token: str = Query(..., description="Email verification token"),
+    user_manager: UserManager = Depends(get_user_manager),
+):
+    return await AuthService(user_manager=user_manager).verify_email(token)
+
+
+@router.post("/resend-verification", status_code=status.HTTP_200_OK)
+async def resend_verification(
+    email: EmailStr,
+    background_tasks: BackgroundTasks,
+    user_manager: UserManager = Depends(get_user_manager),
+):
+    return await AuthService(user_manager=user_manager).resend_verification_email(
+        email, background_tasks
+    )
 
 
 @router.post("/forgot-password")

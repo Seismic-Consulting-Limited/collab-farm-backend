@@ -1,7 +1,7 @@
 from enum import Enum
 import uuid
 from typing import TYPE_CHECKING, Optional
-from fastapi_users.db import (
+from fastapi_users_db_sqlalchemy import (
     SQLAlchemyBaseOAuthAccountTableUUID,
     SQLAlchemyBaseUserTableUUID,
 )

@@ -7,13 +7,21 @@ from sqlalchemy.future import select
 
 from app.models.userModel import User
 from app.schemas.userSchema import (
+    ChangePassword,
     ForgotPasswordSchema,
     ResetPasswordSchema,
     UserCreate,
-    ChangePassword
 )
-from app.utils.emails import send_reset_email_background
-from app.utils.security import generate_reset_token, verify_reset_token
+from app.utils.emails import (
+    send_reset_email_background,
+    send_verification_email_background,
+)
+from app.utils.security import (
+    create_email_verification_token,
+    decode_email_verification_token,
+    generate_reset_token,
+    verify_reset_token,
+)
 
 
 class UserLogin(BaseModel):
@@ -65,14 +73,75 @@ class AuthService:
         token = await self.strategy.write_token(user)
         return {"access_token": token, "token_type": "bearer"}
 
-    async def register(self, user_create: UserCreate):
+    async def register(self, user_create: UserCreate, background_tasks: BackgroundTasks):
         try:
-            return await self.user_manager.create(user_create)
+            user = await self.user_manager.create(user_create)
+
+            # Generate token and send verification email in background
+            token = create_email_verification_token(user.email)
+            send_verification_email_background(
+                user.email, token, background_tasks)
+
+            return user
         except UserAlreadyExists:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=ErrorCode.REGISTER_USER_ALREADY_EXISTS,
             )
+
+    async def verify_email(self, token: str) -> dict:
+        email = decode_email_verification_token(token)
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired verification token.",
+            )
+
+        try:
+            user = await self.user_manager.get_by_email(email)
+        except UserNotExists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User account associated with this token was not found.",
+            )
+
+        if user.is_verified:
+            return {
+                "status": "success",
+                "message": "Account is already verified.",
+            }
+
+        await self.user_manager.user_db.update(user, {"is_verified": True})
+
+        return {
+            "status": "success",
+            "message": "Email verified successfully. You can now log in.",
+        }
+
+    async def resend_verification_email(
+        self, email: str, background_tasks: BackgroundTasks
+    ) -> dict:
+        try:
+            user = await self.user_manager.get_by_email(email)
+        except UserNotExists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User account not found.",
+            )
+
+        if user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Account is already verified.",
+            )
+
+        token = create_email_verification_token(user.email)
+        send_verification_email_background(user.email, token, background_tasks)
+
+        return {
+            "status": "success",
+            "message": "Verification email has been sent successfully.",
+        }
 
     async def forgot_password(
         self, payload: ForgotPasswordSchema, background_tasks: BackgroundTasks
@@ -107,7 +176,8 @@ class AuthService:
                 detail="User account associated with this token was not found.",
             )
 
-        hashed_password = self.user_manager.password_helper.hash(payload.new_password)
+        hashed_password = self.user_manager.password_helper.hash(
+            payload.new_password)
         await self.user_manager.user_db.update(
             user, {"hashed_password": hashed_password}
         )
@@ -116,7 +186,7 @@ class AuthService:
             "status": "success",
             "message": "Your password has been successfully reset. You can now log in.",
         }
-    
+
     async def change_password(self, user: User, payload: ChangePassword) -> dict:
         is_valid, _ = self.user_manager.password_helper.verify_and_update(
             payload.current_password, user.hashed_password
@@ -127,7 +197,8 @@ class AuthService:
                 detail="Incorrect current password.",
             )
 
-        new_hashed_password = self.user_manager.password_helper.hash(payload.new_password)
+        new_hashed_password = self.user_manager.password_helper.hash(
+            payload.new_password)
         await self.user_manager.user_db.update(
             user, {"hashed_password": new_hashed_password}
         )

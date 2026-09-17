@@ -11,7 +11,7 @@ from fastapi_users.authentication import (
     BearerTransport,
     JWTStrategy,
 )
-from fastapi_users.db import SQLAlchemyUserDatabase
+from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from fastapi_users.password import PasswordHelper
 from httpx_oauth.clients.google import GoogleOAuth2
 from passlib.context import CryptContext
