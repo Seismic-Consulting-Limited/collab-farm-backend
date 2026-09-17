@@ -1,4 +1,3 @@
-# app/services/auth_service.py
 from fastapi import BackgroundTasks, HTTPException, Request, status
 from fastapi_users.exceptions import UserAlreadyExists, UserNotExists
 from fastapi_users.router.common import ErrorCode
