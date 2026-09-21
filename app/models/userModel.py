@@ -87,3 +87,9 @@ class User(SQLAlchemyBaseUserTableUUID, Base, TimestampMixin):
     oauth_accounts: Mapped[list[OAuthAccount]] = relationship(
         "OAuthAccount", lazy="joined", cascade="all, delete-orphan"
     )
+
+    investments = relationship(
+        "Investment",
+        back_populates="investor",
+        cascade="all, delete-orphan",
+    )

@@ -1,8 +1,8 @@
 from app.models.base import Base
 from app.models.farmerModel import Farmer
+from app.models.investment_model import Investment
 from app.models.packageModel import (
     FarmerPackageStatus,
-    Investment,
     Package,
     PackageCategory,
     PackageFarmer,

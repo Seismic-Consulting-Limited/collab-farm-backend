@@ -4,9 +4,8 @@ from typing import List
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.models.farmerModel import Farmer, WRSStatus
-from app.models.packageModel import Investment, Package, PackageStatus
+from app.models.packageModel import Package, PackageStatus
 from app.models.profileModel import CooperativeProfile
 from app.models.userModel import User, UserRole
 from app.schemas.dashboard_schema import (
@@ -18,6 +17,7 @@ from app.schemas.dashboard_schema import (
     MonthlyRoiPoint,
     RecentFarmerItem,
 )
+from app.models.investment_model import Investment
 
 
 class DashboardService:

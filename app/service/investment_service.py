@@ -1,210 +1,209 @@
-import math
 import uuid
-from datetime import datetime, timedelta
-from typing import List, Tuple
+from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-from app.models.packageModel import Investment, Package, PackageStatus
-from app.models.userModel import InvestorType
-from app.models.userModel import User, UserRole
+from app.models.investment_model import Investment, InvestmentStatus
+from app.models.packageModel import Package
+from app.models.userModel import User
 from app.schemas.investment_schema import (
-    InvestmentKpis,
-    InvestmentListItem,
-    KpiMetricCard,
-    PaginatedInvestmentsResponse,
+    CooperativeInvestmentDetail,
+    CooperativeInvestmentList,
+    CooperativeInvestmentSummary,
+    Metrics,
+    PaginatedCooperativeInvestments,
 )
 
 
-class InvestmentService:
+class CooperativeInvestmentService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def _calculate_metric_with_30d_growth(
-        self, base_select, cooperative_id: uuid.UUID, extra_filter=None
-    ) -> Tuple[float, float, bool]:
-        now = datetime.utcnow()
+    async def get_dashboard_summary(self, cooperative_id: uuid.UUID) -> CooperativeInvestmentSummary:
+        now = datetime.now(timezone.utc)
         thirty_days_ago = now - timedelta(days=30)
         sixty_days_ago = now - timedelta(days=60)
 
-        query = base_select.join(Package, Investment.package_id == Package.id).where(
-            Package.cooperative_id == cooperative_id
-        )
-
-        if extra_filter is not None:
-            query = query.where(extra_filter)
-
-        total_val = (await self.db.execute(query)).scalar() or 0.0
-
-        curr_30d_res = await self.db.execute(
-            query.where(Investment.created_at >= thirty_days_ago)
-        )
-        curr_30d_val = curr_30d_res.scalar() or 0.0
-
-        prev_30d_res = await self.db.execute(
-            query.where(
-                Investment.created_at >= sixty_days_ago,
-                Investment.created_at < thirty_days_ago,
+        async def fetch_period_stats(start_date=None, end_date=None):
+            stmt = (
+                select(
+                    func.coalesce(func.sum(Investment.amount),
+                                  0.0).label("total"),
+                    func.coalesce(
+                        func.sum(case(
+                            (Investment.status == InvestmentStatus.ACTIVE, Investment.amount), else_=0.0)),
+                        0.0,
+                    ).label("active"),
+                    func.coalesce(
+                        func.sum(
+                            case((Investment.status == InvestmentStatus.ACTIVE,
+                                 Investment.expected_farmer_payout), else_=0.0)
+                        ),
+                        0.0,
+                    ).label("settlement"),
+                    func.coalesce(
+                        func.sum(case(
+                            (Investment.status == InvestmentStatus.OVERDUE, Investment.amount), else_=0.0)),
+                        0.0,
+                    ).label("overdue"),
+                )
+                .join(Package, Investment.package_id == Package.id)
+                .where(Package.cooperative_id == cooperative_id)
             )
+
+            if start_date:
+                stmt = stmt.where(Investment.created_at >= start_date)
+            if end_date:
+                stmt = stmt.where(Investment.created_at < end_date)
+
+            res = await self.db.execute(stmt)
+            return res.one()
+
+        current = await fetch_period_stats()
+        prev = await fetch_period_stats(start_date=sixty_days_ago, end_date=thirty_days_ago)
+
+        def calc_trend(curr_val, prev_val):
+            if not prev_val or prev_val == 0:
+                return 0.0
+            return round(((curr_val - prev_val) / prev_val) * 100, 1)
+
+        return CooperativeInvestmentSummary(
+            total_invested=Metrics(
+                value=float(current.total),
+                trend_percentage=calc_trend(current.total, prev.total),
+            ),
+            active_investments=Metrics(
+                value=float(current.active),
+                trend_percentage=calc_trend(current.active, prev.active),
+            ),
+            expected_settlement=Metrics(
+                value=float(current.settlement),
+                trend_percentage=calc_trend(
+                    current.settlement, prev.settlement),
+            ),
+            overdue_investments=Metrics(
+                value=float(current.overdue),
+                trend_percentage=calc_trend(current.overdue, prev.overdue),
+            ),
         )
-        prev_30d_val = prev_30d_res.scalar() or 0.0
-
-        if prev_30d_val == 0.0:
-            growth_pct = 100.0 if curr_30d_val > 0 else 0.0
-        else:
-            growth_pct = round(
-                ((curr_30d_val - prev_30d_val) / prev_30d_val) * 100, 1)
-
-        is_positive = growth_pct >= 0
-        return total_val, abs(growth_pct), is_positive
 
     async def get_cooperative_investments(
-        self, user: User, page: int = 1, limit: int = 10
-    ) -> PaginatedInvestmentsResponse:
-        if user.role != UserRole.COOPERATIVE:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Investment records are only accessible to Cooperative accounts.",
-            )
-
-        now = datetime.utcnow()
-
-        total_inv, total_growth, total_pos = await self._calculate_metric_with_30d_growth(
-            select(func.coalesce(func.sum(Investment.amount), 0.0)),
-            user.id,
-        )
-
-        active_inv, active_growth, active_pos = await self._calculate_metric_with_30d_growth(
-            select(func.coalesce(func.sum(Investment.amount), 0.0)),
-            user.id,
-            extra_filter=(Package.status == PackageStatus.ACTIVE),
-        )
-
-        expected_inv, exp_growth, exp_pos = await self._calculate_metric_with_30d_growth(
-            select(func.coalesce(func.sum(Investment.amount), 0.0)),
-            user.id,
-            extra_filter=(
-                Package.status.in_(
-                    [PackageStatus.ACTIVE, PackageStatus.PENDING])
-            ),
-        )
-
-        total_count_res = await self.db.execute(
-            select(func.count(Investment.id))
-            .join(Package, Investment.package_id == Package.id)
-            .where(Package.cooperative_id == user.id)
-        )
-        total_count = total_count_res.scalar() or 0
-
-        overdue_count_res = await self.db.execute(
-            select(func.count(Investment.id))
-            .join(Package, Investment.package_id == Package.id)
-            .where(
-                Package.cooperative_id == user.id,
-                Package.status == PackageStatus.ACTIVE,
-                Package.start_date +
-                timedelta(days=30 * Package.duration_months) < now
-                if hasattr(Package, "duration_months")
-                else Package.status == PackageStatus.ACTIVE,
-            )
-        )
-        overdue_count = overdue_count_res.scalar() or 0
-
-        overdue_rate = (
-            round((overdue_count / total_count) *
-                  100, 1) if total_count > 0 else 0.0
-        )
-
-        kpis = InvestmentKpis(
-            total_invested=KpiMetricCard(
-                value=f"₦ {total_inv:,.2f}",
-                change_percentage=f"{total_growth}%",
-                is_positive=total_pos,
-                subtext="in the last 30 days.",
-            ),
-            active_investments=KpiMetricCard(
-                value=f"₦ {active_inv:,.2f}",
-                change_percentage=f"{active_growth}%",
-                is_positive=active_pos,
-                subtext="in the last 30 days.",
-            ),
-            expected_settlement=KpiMetricCard(
-                value=f"₦ {expected_inv:,.2f}",
-                change_percentage=f"{exp_growth}%",
-                is_positive=exp_pos,
-                subtext="in the last 30 days.",
-            ),
-            overdue_rate=KpiMetricCard(
-                value=f"{overdue_rate}%",
-                change_percentage="0.0%",
-                is_positive=True,
-                subtext="in the last 30 days.",
-            ),
-        )
-
-        offset = (page - 1) * limit
-        query = (
+        self,
+        cooperative_id: uuid.UUID,
+        page: int = 1,
+        size: int = 20,
+        search: str | None = None,
+        category: str | None = None,
+        status_filter: InvestmentStatus | None = None,
+    ) -> PaginatedCooperativeInvestments:
+        base_query = (
             select(Investment)
             .join(Package, Investment.package_id == Package.id)
+            .join(User, Investment.investor_id == User.id)
+            .where(Package.cooperative_id == cooperative_id)
+        )
+
+        if status_filter:
+            base_query = base_query.where(Investment.status == status_filter)
+
+        if category:
+            base_query = base_query.where(
+                Package.category.ilike(f"%{category}%"))
+
+        if search:
+            search_fmt = f"%{search}%"
+            base_query = base_query.where(
+                or_(
+                    User.first_name.ilike(search_fmt),
+                    User.last_name.ilike(search_fmt),
+                    User.phone_number.ilike(search_fmt),
+                    Package.title.ilike(search_fmt),
+                    Package.category.ilike(search_fmt),
+                )
+            )
+
+        # Count total matching
+        count_stmt = select(func.count()).select_from(base_query.subquery())
+        total_res = await self.db.execute(count_stmt)
+        total = total_res.scalar_one()
+
+        # Execute pagination query
+        offset = (page - 1) * size
+        items_stmt = (
+            base_query.options(
+                selectinload(Investment.package),
+                selectinload(Investment.investor),
+            )
+            .order_by(Investment.created_at.desc())
+            .offset(offset)
+            .limit(size)
+        )
+
+        items_res = await self.db.execute(items_stmt)
+        investments = items_res.scalars().all()
+
+        formatted_items = [
+            CooperativeInvestmentList(
+                id=inv.id,
+                investor_id_code=getattr(
+                    inv.investor, "display_id", f"LN-25-{str(inv.investor_id)[:5]}"),
+                investor_name=f"{inv.investor.first_name or ''} {inv.investor.last_name or ''}".strip(
+                ) or inv.investor.email,
+                investor_location=getattr(inv.investor, "state", None),
+                investor_avatar=getattr(inv.investor, "avatar_url", None),
+                package_title=inv.package.title,
+                package_category=getattr(
+                    inv.package, "category", "Crop Farming"),
+                amount=inv.amount,
+                date_invested=inv.created_at,
+                status=inv.status,
+            )
+            for inv in investments
+        ]
+
+        return PaginatedCooperativeInvestments(
+            total=total, page=page, size=size, items=formatted_items
+        )
+
+    async def get_investment_detail(
+        self, investment_id: uuid.UUID, cooperative_id: uuid.UUID
+    ) -> CooperativeInvestmentDetail:
+        stmt = (
+            select(Investment)
             .options(
                 selectinload(Investment.package),
                 selectinload(Investment.investor),
             )
-            .where(Package.cooperative_id == user.id)
-            .order_by(Investment.created_at.desc())
-            .offset(offset)
-            .limit(limit)
+            .join(Package, Investment.package_id == Package.id)
+            .where(
+                Investment.id == investment_id,
+                Package.cooperative_id == cooperative_id,
+            )
         )
 
-        result = await self.db.execute(query)
-        investments = result.scalars().all()
+        res = await self.db.execute(stmt)
+        inv = res.scalars().first()
 
-        items: List[InvestmentListItem] = []
-        for inv in investments:
-            investor_user = inv.investor
-            investor_name = (
-                f"{investor_user.first_name} {investor_user.last_name}".strip()
-                if investor_user and (investor_user.first_name or investor_user.last_name)
-                else (investor_user.email if investor_user else "N/A")
+        if not inv:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Investment detail record not found.",
             )
 
-            profile_res = await self.db.execute(
-                select(InvestorType).where(
-                    InvestorType.user_id == inv.investor_id)
-            )
-            profile = profile_res.scalars().first()
-            location = profile.state if profile and profile.state else "Unspecified"
-
-            inv_code = f"LN-{inv.created_at.strftime('%y')}-{str(inv.id)[:6].upper()}"
-
-            pkg_status = inv.package.status if inv.package else "UNKNOWN"
-            status_str = (
-                pkg_status.value if hasattr(
-                    pkg_status, "value") else str(pkg_status)
-            )
-
-            items.append(
-                InvestmentListItem(
-                    id=inv.id,
-                    investor_name=investor_name,
-                    investor_location=location,
-                    investor_code=inv_code,
-                    package_title=inv.package.title if inv.package else "N/A",
-                    amount=inv.amount,
-                    date_invested=inv.created_at,
-                    status=status_str,
-                )
-            )
-
-        pages = math.ceil(total_count / limit) if limit > 0 else 1
-
-        return PaginatedInvestmentsResponse(
-            kpis=kpis,
-            items=items,
-            total=total_count,
-            page=page,
-            limit=limit,
-            pages=pages,
+        return CooperativeInvestmentDetail(
+            id=inv.id,
+            investor_id_code=getattr(
+                inv.investor, "display_id", f"ID-{str(inv.investor_id)[:5]}"),
+            investor_name=f"{inv.investor.first_name or ''} {inv.investor.last_name or ''}".strip(
+            ) or inv.investor.email,
+            investor_avatar=getattr(inv.investor, "avatar_url", None),
+            investor_is_active=inv.investor.is_active,
+            package_title=inv.package.title,
+            package_category=getattr(inv.package, "category", "Crop Farming"),
+            amount_invested=inv.amount,
+            date_invested=inv.created_at,
+            payment_method=getattr(inv, "payment_method", "Bank Transfer"),
+            transaction_reference=getattr(inv, "transaction_reference", None),
+            status=inv.status,
         )
