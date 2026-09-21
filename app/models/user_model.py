@@ -11,8 +11,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
-    from app.models.profileModel import GroupProfile, IndividualProfile, CooperativeProfile
-    from app.models.farmerModel import Farmer
+    from app.models.profile_model import GroupProfile, IndividualProfile, CooperativeProfile
+    from app.models.farmer_model import Farmer
 
 
 class UserRole(str, Enum):

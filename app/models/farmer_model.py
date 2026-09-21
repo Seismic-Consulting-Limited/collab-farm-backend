@@ -18,7 +18,7 @@ class WRSStatus(str, enum.Enum):
 
 
 if TYPE_CHECKING:
-    from app.models.userModel import User
+    from app.models.user_model import User
 
 
 class Farmer(Base, TimestampMixin):

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, Union
 from pydantic import BaseModel, ConfigDict, EmailStr
-from app.schemas.userSchema import UserRole, InvestorType, VerificationStatus
+from app.schemas.user_schema import UserRole, InvestorType, VerificationStatus
 
 
 class IndividualProfileBase(BaseModel):

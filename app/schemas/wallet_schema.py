@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from pydantic import BaseModel, Field
-from app.models.walletModel import TransactionType, TransactionStatus
+from app.models.wallet_model import TransactionType, TransactionStatus
 from decimal import Decimal
 
 

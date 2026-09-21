@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
-    from app.models.userModel import User
+    from app.models.user_model import User
 
 
 class IndividualProfile(Base, TimestampMixin):

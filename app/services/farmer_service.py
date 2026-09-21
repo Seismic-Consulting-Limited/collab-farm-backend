@@ -6,9 +6,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.farmerModel import Farmer, Gender, WRSStatus
-from app.models.userModel import User, UserRole
-from app.schemas.farmerSchema import PaginatedFarmerResponse
+from app.models.farmer_model import Farmer, Gender, WRSStatus
+from app.models.user_model import User, UserRole
+from app.schemas.farmer_schema import PaginatedFarmerResponse
 from app.utils.cloudinary import upload_kyc_document
 
 

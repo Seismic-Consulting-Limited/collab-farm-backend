@@ -1,8 +1,8 @@
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.profileModel import CooperativeProfile, GroupProfile, IndividualProfile
-from app.schemas.profileSchema import UserProfile
-from app.models.userModel import InvestorType, User, UserRole, VerificationStatus
+from app.models.profile_model import CooperativeProfile, GroupProfile, IndividualProfile
+from app.schemas.profile_schema import UserProfile
+from app.models.user_model import InvestorType, User, UserRole, VerificationStatus
 from app.utils.cloudinary import upload_kyc_document
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload

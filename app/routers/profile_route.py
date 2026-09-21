@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_async_session
-from app.models.userModel import User
-from app.service.profile_service import ProfileService
-from app.schemas.profileSchema import UserProfile
+from app.models.user_model import User
+from app.services.profile_service import ProfileService
+from app.schemas.profile_schema import UserProfile
 from app.users import current_active_user, get_user_manager, UserManager
-from app.service.auth_service import AuthService
-from app.schemas.userSchema import ChangePassword
+from app.services.auth_service import AuthService
+from app.schemas.user_schema import ChangePassword
 
 router = APIRouter(prefix="/profile", tags=["Profile Management"])
 

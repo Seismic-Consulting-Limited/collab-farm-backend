@@ -9,9 +9,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
-    from app.models.farmerModel import Farmer
+    from app.models.farmer_model import Farmer
     from app.models.investment_model import Investment
-    from app.models.userModel import User
+    from app.models.user_model import User
 
 
 class PackageType(str, Enum):

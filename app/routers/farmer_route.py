@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_async_session
-from app.models.farmerModel import Gender, WRSStatus
-from app.models.userModel import User
-from app.schemas.farmerSchema import FarmerRead, PaginatedFarmerResponse
-from app.service.farmer_service import FarmerService
+from app.models.farmer_model import Gender, WRSStatus
+from app.models.user_model import User
+from app.schemas.farmer_schema import FarmerRead, PaginatedFarmerResponse
+from app.services.farmer_service import FarmerService
 from app.users import current_active_user
 
 router = APIRouter(prefix="/farmers", tags=["Farmer Directory"])

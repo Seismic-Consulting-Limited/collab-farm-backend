@@ -1,7 +1,7 @@
 from app.models.base import Base
-from app.models.farmerModel import Farmer
+from app.models.farmer_model import Farmer
 from app.models.investment_model import Investment
-from app.models.packageModel import (
+from app.models.package_model import (
     FarmerPackageStatus,
     Package,
     PackageCategory,
@@ -9,8 +9,8 @@ from app.models.packageModel import (
     PackageStatus,
     PackageType,
 )
-from app.models.profileModel import CooperativeProfile, GroupProfile, IndividualProfile
-from app.models.userModel import OAuthAccount, User
+from app.models.profile_model import CooperativeProfile, GroupProfile, IndividualProfile
+from app.models.user_model import OAuthAccount, User
 
 __all__ = [
     "Base",

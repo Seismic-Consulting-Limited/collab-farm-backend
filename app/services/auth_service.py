@@ -5,8 +5,8 @@ from pydantic import BaseModel, EmailStr, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.models.userModel import User
-from app.schemas.userSchema import (
+from app.models.user_model import User
+from app.schemas.user_schema import (
     ChangePassword,
     ForgotPasswordSchema,
     ResetPasswordSchema,

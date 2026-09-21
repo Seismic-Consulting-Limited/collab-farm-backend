@@ -5,8 +5,8 @@ from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.models.investment_model import Investment, InvestmentStatus
-from app.models.packageModel import Package
-from app.models.userModel import User
+from app.models.package_model import Package
+from app.models.user_model import User
 from app.schemas.investment_schema import (
     CooperativeInvestmentDetail,
     CooperativeInvestmentList,

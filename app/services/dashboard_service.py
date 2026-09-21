@@ -4,10 +4,10 @@ from typing import List
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.farmerModel import Farmer, WRSStatus
-from app.models.packageModel import Package, PackageStatus
-from app.models.profileModel import CooperativeProfile
-from app.models.userModel import User, UserRole
+from app.models.farmer_model import Farmer, WRSStatus
+from app.models.package_model import Package, PackageStatus
+from app.models.profile_model import CooperativeProfile
+from app.models.user_model import User, UserRole
 from app.schemas.dashboard_schema import (
     CooperativeDashboardResponse,
     CropTypeBreakdown,

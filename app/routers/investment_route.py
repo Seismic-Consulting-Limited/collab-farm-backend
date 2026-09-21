@@ -3,14 +3,14 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_async_session
-from app.models.userModel import User
+from app.models.user_model import User
 from app.schemas.investment_schema import (
     CooperativeInvestmentDetail,
     CooperativeInvestmentSummary,
     InvestmentStatus,
     PaginatedCooperativeInvestments,
 )
-from app.service.investment_service import CooperativeInvestmentService
+from app.services.investment_service import CooperativeInvestmentService
 from app.users import current_active_user
 
 router = APIRouter(prefix="/cooperative/investments",

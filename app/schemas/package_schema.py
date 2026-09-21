@@ -4,13 +4,13 @@ from datetime import date, datetime
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
-from app.models.packageModel import (
+from app.models.package_model import (
     FarmerPackageStatus,
     PackageCategory,
     PackageStatus,
     PackageType,
 )
-from app.models.userModel import InvestorType
+from app.models.user_model import InvestorType
 
 
 class PackageCreate(BaseModel):

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.models.investment_model import Investment
-from app.models.packageModel import (
+from app.models.package_model import (
     FarmerPackageStatus,
     Package,
     PackageCategory,
@@ -13,8 +13,8 @@ from app.models.packageModel import (
     PackageStatus,
     PackageType,
 )
-from app.models.userModel import User, UserRole
-from app.schemas.packageschema import (
+from app.models.user_model import User, UserRole
+from app.schemas.package_schema import (
     AssignFarmerSchema,
     PackageCreate,
     PackageDetailRead,

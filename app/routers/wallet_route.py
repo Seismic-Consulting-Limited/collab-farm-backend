@@ -6,9 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.db import get_async_session
-from app.models.userModel import User
-from app.models.walletModel import Wallet, Transaction, TransactionType, TransactionStatus
-from app.schemas.walletSchema import WalletOverviewResponse, TransactionRead, FundWalletSchema, WithdrawalRequestSchema
+from app.models.user_model import User
+from app.models.wallet_model import Wallet, Transaction, TransactionType, TransactionStatus
+from app.schemas.wallet_schema import WalletOverviewResponse, TransactionRead, FundWalletSchema, WithdrawalRequestSchema
 from app.utils.paystack import create_transfer_recipient, initiate_paystack_transfer
 from app.users import current_active_user
 from dotenv import load_dotenv

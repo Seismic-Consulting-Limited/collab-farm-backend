@@ -2,7 +2,7 @@ import uuid
 from fastapi_users import schemas
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
-from app.models.userModel import InvestorType, UserRole, VerificationStatus
+from app.models.user_model import InvestorType, UserRole, VerificationStatus
 
 
 class UserRead(schemas.BaseUser[uuid.UUID]):
