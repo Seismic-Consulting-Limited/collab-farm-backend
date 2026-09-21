@@ -8,7 +8,7 @@ from app.users import current_active_user, get_user_manager, UserManager
 from app.services.auth_service import AuthService
 from app.schemas.user_schema import ChangePassword
 
-router = APIRouter(prefix="/profile", tags=["Profile Management"])
+router = APIRouter(prefix="/profile", tags=["Profiles"])
 
 
 @router.post("/individual-investor", status_code=status.HTTP_201_CREATED)

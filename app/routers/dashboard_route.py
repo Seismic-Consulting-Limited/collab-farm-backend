@@ -7,7 +7,7 @@ from app.schemas.dashboard_schema import CooperativeDashboardResponse
 from app.services.dashboard_service import DashboardService
 from app.users import current_active_user
 
-router = APIRouter(prefix="/dashboard", tags=["Dashboard & Analytics"])
+router = APIRouter(prefix="/dashboard", tags=["Cooperative Dashboard"])
 
 
 @router.get(

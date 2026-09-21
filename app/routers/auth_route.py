@@ -13,7 +13,7 @@ from app.schemas.user_schema import (
 from app.services.auth_service import AuthService
 from app.users import UserManager, auth_backend, get_user_manager
 
-router = APIRouter(prefix="/auth", tags=["Auth"])
+router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 @router.post("/login")

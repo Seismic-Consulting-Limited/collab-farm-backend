@@ -9,7 +9,7 @@ from typing import Optional
 from app.services.package_service import PackageService
 from app.users import current_active_user
 
-router = APIRouter(prefix="/packages", tags=["Investment Packages"])
+router = APIRouter(prefix="/packages", tags=["Funding Packages"])
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
