@@ -1,14 +1,16 @@
 import math
 import uuid
-from typing import Optional
+from typing import List, Optional
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.farmer_model import Farmer, Gender, WRSStatus
+from app.models.farmer_model import Farm, Farmer, FarmStatus, Gender, WRSStatus
+from app.models.investment_model import Investment, InvestmentStatus
+from app.models.package_model import PackageFarmer
 from app.models.user_model import User, UserRole
-from app.schemas.farmer_schema import PaginatedFarmerResponse
+from app.schemas.farmer_schema import FarmCreate, FarmStatusUpdate, PaginatedFarmerResponse
 from app.utils.cloudinary import upload_kyc_document
 
 
@@ -16,13 +18,28 @@ class FarmerService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def _has_active_investment(self, farmer_id: uuid.UUID) -> bool:
+        """Helper to verify if a farmer is linked to any active investment."""
+        stmt = (
+            select(Investment.id)
+            .join(PackageFarmer, Investment.package_id == PackageFarmer.package_id)
+            .where(
+                PackageFarmer.farmer_id == farmer_id,
+                Investment.status == InvestmentStatus.ACTIVE,
+            )
+            .limit(1)
+        )
+        res = await self.db.execute(stmt)
+        return res.scalar_one_or_none() is not None
+
     async def fetch_farmer_with_relations(self, farmer_id: uuid.UUID) -> Farmer:
         result = await self.db.execute(
             select(Farmer)
             .options(
+                selectinload(Farmer.farms),
                 selectinload(Farmer.cooperative).selectinload(
                     User.cooperative_profile
-                )
+                ),
             )
             .where(Farmer.id == farmer_id)
         )
@@ -39,14 +56,12 @@ class FarmerService:
         user: User,
         full_name: str,
         nin: str,
-        crop_type: str,
         phone_number: str,
         gender: Gender,
-        farm_size_acres: float,
-        farm_address: str,
-        photo: UploadFile,
+        photo: Optional[UploadFile] = None,
         additional_info: Optional[str] = None,
         wrs_status: WRSStatus = WRSStatus.NOT_VERIFIED,
+        farms: Optional[List[FarmCreate]] = None,
     ) -> Farmer:
         if user.role != UserRole.COOPERATIVE:
             raise HTTPException(
@@ -60,49 +75,71 @@ class FarmerService:
                 detail="NIN must consist of exactly 11 numeric digits.",
             )
 
-        photo_res = await upload_kyc_document(photo, "collabfarm/farmer_photos")
+        photo_url = None
+        if photo:
+            photo_res = await upload_kyc_document(photo, "collabfarm/farmer_photos")
+            photo_url = photo_res.get("secure_url")
 
         farmer = Farmer(
             cooperative_id=user.id,
             full_name=full_name,
             nin=nin,
-            crop_type=crop_type,
             phone_number=phone_number,
             gender=gender,
-            farm_size_acres=farm_size_acres,
-            farm_address=farm_address,
-            photo=photo_res["secure_url"],
+            photo=photo_url,
             additional_info=additional_info,
             wrs_status=wrs_status,
         )
-
         self.db.add(farmer)
-        await self.db.commit()
+        await self.db.flush()
 
+        if farms:
+            for farm_item in farms:
+                farm = Farm(
+                    farmer_id=farmer.id,
+                    name=farm_item.name,
+                    location=farm_item.location,
+                    size_in_hectares=farm_item.size_in_hectares,
+                    farming_category=farm_item.farming_category,
+                    status=farm_item.status,
+                )
+                self.db.add(farm)
+
+        await self.db.commit()
         return await self.fetch_farmer_with_relations(farmer.id)
 
     async def list_farmers(
         self,
         search: Optional[str] = None,
-        crop_type: Optional[str] = None,
+        farming_category: Optional[str] = None,
         wrs_status: Optional[WRSStatus] = None,
         cooperative_id: Optional[uuid.UUID] = None,
         page: int = 1,
         page_size: int = 12,
     ) -> PaginatedFarmerResponse:
-        query = select(Farmer).options(
-            selectinload(Farmer.cooperative).selectinload(User.cooperative_profile)
+        query = (
+            select(Farmer)
+            .outerjoin(Farmer.farms)
+            .options(
+                selectinload(Farmer.farms),
+                selectinload(Farmer.cooperative).selectinload(
+                    User.cooperative_profile),
+            )
+            .distinct()
         )
 
         if search:
             query = query.where(
                 Farmer.full_name.ilike(f"%{search}%")
                 | Farmer.nin.ilike(f"%{search}%")
-                | Farmer.crop_type.ilike(f"%{search}%")
+                | Farm.name.ilike(f"%{search}%")
+                | Farm.farming_category.ilike(f"%{search}%")
+                | Farm.location.ilike(f"%{search}%")
             )
 
-        if crop_type:
-            query = query.where(Farmer.crop_type.ilike(f"%{crop_type}%"))
+        if farming_category:
+            query = query.where(
+                Farm.farming_category.ilike(f"%{farming_category}%"))
 
         if wrs_status:
             query = query.where(Farmer.wrs_status == wrs_status)
@@ -139,11 +176,8 @@ class FarmerService:
         user: User,
         full_name: Optional[str] = None,
         nin: Optional[str] = None,
-        crop_type: Optional[str] = None,
         phone_number: Optional[str] = None,
         gender: Optional[Gender] = None,
-        farm_size_acres: Optional[float] = None,
-        farm_address: Optional[str] = None,
         additional_info: Optional[str] = None,
         wrs_status: Optional[WRSStatus] = None,
         photo: Optional[UploadFile] = None,
@@ -162,6 +196,12 @@ class FarmerService:
                 detail="You are only authorized to modify farmers registered under your cooperative.",
             )
 
+        if await self._has_active_investment(farmer_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot edit farmer profile while they have active investments.",
+            )
+
         if nin is not None and (not nin.isdigit() or len(nin) != 11):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -171,11 +211,8 @@ class FarmerService:
         update_fields = {
             "full_name": full_name,
             "nin": nin,
-            "crop_type": crop_type,
             "phone_number": phone_number,
             "gender": gender,
-            "farm_size_acres": farm_size_acres,
-            "farm_address": farm_address,
             "additional_info": additional_info,
             "wrs_status": wrs_status,
         }
@@ -189,7 +226,6 @@ class FarmerService:
             farmer.photo = photo_res["secure_url"]
 
         await self.db.commit()
-
         return await self.fetch_farmer_with_relations(farmer.id)
 
     async def delete_farmer(self, farmer_id: uuid.UUID, user: User) -> None:
@@ -207,6 +243,77 @@ class FarmerService:
                 detail="You are only authorized to delete farmers registered under your cooperative.",
             )
 
+        if await self._has_active_investment(farmer_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete farmer profile while they have active investments.",
+            )
+
         await self.db.delete(farmer)
         await self.db.commit()
         return None
+
+    async def add_farm_to_farmer(
+        self, cooperative_id: uuid.UUID, farmer_id: uuid.UUID, farm_data: FarmCreate
+    ) -> Farm:
+        stmt = select(Farmer).where(
+            Farmer.id == farmer_id, Farmer.cooperative_id == cooperative_id
+        )
+        res = await self.db.execute(stmt)
+        farmer = res.scalar_one_or_none()
+
+        if not farmer:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Farmer not found in this cooperative.",
+            )
+
+        new_farm = Farm(
+            farmer_id=farmer_id,
+            name=farm_data.name,
+            location=farm_data.location,
+            size_in_hectares=farm_data.size_in_hectares,
+            farming_category=farm_data.farming_category,
+            status=farm_data.status,
+        )
+        self.db.add(new_farm)
+        await self.db.commit()
+        await self.db.refresh(new_farm)
+        return new_farm
+
+    async def update_farm_status(
+        self, cooperative_id: uuid.UUID, farm_id: uuid.UUID, status_update: FarmStatusUpdate
+    ) -> Farm:
+        stmt = (
+            select(Farm)
+            .join(Farmer, Farm.farmer_id == Farmer.id)
+            .where(Farm.id == farm_id, Farmer.cooperative_id == cooperative_id)
+        )
+        res = await self.db.execute(stmt)
+        farm = res.scalar_one_or_none()
+
+        if not farm:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Farm record not found.",
+            )
+
+        farm.status = status_update.status
+        await self.db.commit()
+        await self.db.refresh(farm)
+        return farm
+
+    async def get_farmer_farms(
+        self, cooperative_id: uuid.UUID, farmer_id: uuid.UUID, active_only: bool = False
+    ) -> List[Farm]:
+        stmt = (
+            select(Farm)
+            .join(Farmer, Farm.farmer_id == Farmer.id)
+            .where(Farm.farmer_id == farmer_id, Farmer.cooperative_id == cooperative_id)
+        )
+
+        if active_only:
+            stmt = stmt.where(Farm.status == FarmStatus.ACTIVE)
+
+        res = await self.db.execute(stmt)
+        return list(res.scalars().all())

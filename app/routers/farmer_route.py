@@ -1,12 +1,19 @@
+import json
 import uuid
-from typing import Optional
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_async_session
 from app.models.farmer_model import Gender, WRSStatus
 from app.models.user_model import User
-from app.schemas.farmer_schema import FarmerRead, PaginatedFarmerResponse
+from app.schemas.farmer_schema import (
+    FarmCreate,
+    FarmRead,
+    FarmerRead,
+    FarmStatusUpdate,
+    PaginatedFarmerResponse,
+)
 from app.services.farmer_service import FarmerService
 from app.users import current_active_user
 
@@ -17,38 +24,43 @@ router = APIRouter(prefix="/farmers", tags=["Farmer Directory"])
 async def add_farmer(
     full_name: str = Form(...),
     nin: str = Form(...),
-    crop_type: str = Form(...),
     phone_number: str = Form(...),
     gender: Gender = Form(...),
-    farm_size_acres: float = Form(...),
-    farm_address: str = Form(...),
     additional_info: Optional[str] = Form(None),
     wrs_status: WRSStatus = Form(WRSStatus.NOT_VERIFIED),
-    photo: UploadFile = File(...),
+    photo: Optional[UploadFile] = File(None),
+    farms_json: Optional[str] = Form(None),
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
+    farms: Optional[List[FarmCreate]] = None
+    if farms_json:
+        try:
+            raw_farms = json.loads(farms_json)
+            farms = [FarmCreate(**f) for f in raw_farms]
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid JSON format for farms: {str(e)}",
+            )
+
     return await FarmerService(db).add_farmer(
         user=user,
         full_name=full_name,
         nin=nin,
-        crop_type=crop_type,
         phone_number=phone_number,
         gender=gender,
-        farm_size_acres=farm_size_acres,
-        farm_address=farm_address,
         photo=photo,
         additional_info=additional_info,
         wrs_status=wrs_status,
+        farms=farms,
     )
 
 
 @router.get("", response_model=PaginatedFarmerResponse)
 async def list_farmers(
-    search: Optional[str] = Query(
-        None, description="Search by name, NIN, or crop type"
-    ),
-    crop_type: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    farming_category: Optional[str] = Query(None),
     wrs_status: Optional[WRSStatus] = Query(None),
     cooperative_id: Optional[uuid.UUID] = Query(None),
     page: int = Query(1, ge=1),
@@ -58,7 +70,7 @@ async def list_farmers(
 ):
     return await FarmerService(db).list_farmers(
         search=search,
-        crop_type=crop_type,
+        farming_category=farming_category,
         wrs_status=wrs_status,
         cooperative_id=cooperative_id,
         page=page,
@@ -80,11 +92,8 @@ async def update_farmer(
     farmer_id: uuid.UUID,
     full_name: Optional[str] = Form(None),
     nin: Optional[str] = Form(None),
-    crop_type: Optional[str] = Form(None),
     phone_number: Optional[str] = Form(None),
     gender: Optional[Gender] = Form(None),
-    farm_size_acres: Optional[float] = Form(None),
-    farm_address: Optional[str] = Form(None),
     additional_info: Optional[str] = Form(None),
     wrs_status: Optional[WRSStatus] = Form(None),
     photo: Optional[UploadFile] = File(None),
@@ -96,11 +105,8 @@ async def update_farmer(
         user=user,
         full_name=full_name,
         nin=nin,
-        crop_type=crop_type,
         phone_number=phone_number,
         gender=gender,
-        farm_size_acres=farm_size_acres,
-        farm_address=farm_address,
         additional_info=additional_info,
         wrs_status=wrs_status,
         photo=photo,
@@ -114,3 +120,41 @@ async def delete_farmer(
     db: AsyncSession = Depends(get_async_session),
 ):
     return await FarmerService(db).delete_farmer(farmer_id=farmer_id, user=user)
+
+
+@router.post(
+    "/{farmer_id}/farms", response_model=FarmRead, status_code=status.HTTP_201_CREATED
+)
+async def add_farm_to_farmer(
+    farmer_id: uuid.UUID,
+    farm_data: FarmCreate,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    return await FarmerService(db).add_farm_to_farmer(
+        cooperative_id=user.id, farmer_id=farmer_id, farm_data=farm_data
+    )
+
+
+@router.patch("/farms/{farm_id}/status", response_model=FarmRead)
+async def update_farm_status(
+    farm_id: uuid.UUID,
+    status_update: FarmStatusUpdate,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    return await FarmerService(db).update_farm_status(
+        cooperative_id=user.id, farm_id=farm_id, status_update=status_update
+    )
+
+
+@router.get("/{farmer_id}/farms", response_model=List[FarmRead])
+async def get_farmer_farms(
+    farmer_id: uuid.UUID,
+    active_only: bool = Query(False),
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    return await FarmerService(db).get_farmer_farms(
+        cooperative_id=user.id, farmer_id=farmer_id, active_only=active_only
+    )
