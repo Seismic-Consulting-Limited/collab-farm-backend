@@ -2,7 +2,6 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.db import get_async_session
 from app.schemas.user_schema import (
     ForgotPasswordSchema,

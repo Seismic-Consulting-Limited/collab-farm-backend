@@ -1,6 +1,6 @@
 from enum import Enum
+from typing import Optional, TYPE_CHECKING
 import uuid
-from typing import TYPE_CHECKING, Optional
 from fastapi_users_db_sqlalchemy import (
     SQLAlchemyBaseOAuthAccountTableUUID,
     SQLAlchemyBaseUserTableUUID,
@@ -9,10 +9,10 @@ from sqlalchemy import Enum as SQLEnum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
+from app.models.farmer_model import Farmer
 
 if TYPE_CHECKING:
-    from app.models.profile_model import GroupProfile, IndividualProfile, CooperativeProfile
-    from app.models.farmer_model import Farmer
+    from app.models.profile_model import CooperativeProfile, GroupProfile, IndividualProfile
 
 
 class UserRole(str, Enum):

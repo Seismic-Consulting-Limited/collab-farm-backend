@@ -1,12 +1,9 @@
 import uuid
-from typing import TYPE_CHECKING
 from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
-
-if TYPE_CHECKING:
-    from app.models.user_model import User
+from app.models.user_model import User
 
 
 class IndividualProfile(Base, TimestampMixin):
