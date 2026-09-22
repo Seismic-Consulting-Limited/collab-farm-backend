@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from pydantic import BaseModel, ConfigDict
 
@@ -11,9 +11,15 @@ class InvestmentStatus(str, Enum):
     OVERDUE = "overdue"
 
 
+class SettlementStatus(str, Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    OVERDUE = "overdue"
+
+
 class Metrics(BaseModel):
     value: float
-    trend_percentage: float  
+    trend_percentage: float
 
 
 class CooperativeInvestmentSummary(BaseModel):
@@ -48,6 +54,12 @@ class CooperativeInvestmentDetail(BaseModel):
     date_invested: datetime
     payment_method: str | None = None
     transaction_reference: str | None = None
+    farming_progress: float
+    farming_cycle: str
+    farmers_supported: int
+    expected_settlement_date: date
+    expected_settlement_amount: float
+    settlement_status: SettlementStatus
     status: InvestmentStatus
     model_config = ConfigDict(from_attributes=True)
 

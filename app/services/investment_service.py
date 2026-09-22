@@ -1,9 +1,10 @@
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
 from app.models.investment_model import Investment, InvestmentStatus
 from app.models.package_model import Package
 from app.models.user_model import User
@@ -13,6 +14,7 @@ from app.schemas.investment_schema import (
     CooperativeInvestmentSummary,
     Metrics,
     PaginatedCooperativeInvestments,
+    SettlementStatus,
 )
 
 
@@ -38,7 +40,7 @@ class CooperativeInvestmentService:
                     func.coalesce(
                         func.sum(
                             case((Investment.status == InvestmentStatus.ACTIVE,
-                                 Investment.expected_farmer_payout), else_=0.0)
+                                  Investment.expected_farmer_payout), else_=0.0)
                         ),
                         0.0,
                     ).label("settlement"),
@@ -123,12 +125,10 @@ class CooperativeInvestmentService:
                 )
             )
 
-        # Count total matching
         count_stmt = select(func.count()).select_from(base_query.subquery())
         total_res = await self.db.execute(count_stmt)
         total = total_res.scalar_one()
 
-        # Execute pagination query
         offset = (page - 1) * size
         items_stmt = (
             base_query.options(
@@ -147,14 +147,16 @@ class CooperativeInvestmentService:
             CooperativeInvestmentList(
                 id=inv.id,
                 investor_id_code=getattr(
-                    inv.investor, "display_id", f"LN-25-{str(inv.investor_id)[:5]}"),
+                    inv.investor, "display_id", f"LN-25-{str(inv.investor_id)[:5]}"
+                ),
                 investor_name=f"{inv.investor.first_name or ''} {inv.investor.last_name or ''}".strip(
-                ) or inv.investor.email,
-                investor_location=getattr(inv.investor, "state", None),
+                )
+                or inv.investor.email,
                 investor_avatar=getattr(inv.investor, "avatar_url", None),
                 package_title=inv.package.title,
                 package_category=getattr(
-                    inv.package, "category", "Crop Farming"),
+                    inv.package, "category", "Crop Farming"
+                ),
                 amount=inv.amount,
                 date_invested=inv.created_at,
                 status=inv.status,
@@ -172,7 +174,8 @@ class CooperativeInvestmentService:
         stmt = (
             select(Investment)
             .options(
-                selectinload(Investment.package),
+                selectinload(Investment.package).selectinload(
+                    Package.package_farmers),
                 selectinload(Investment.investor),
             )
             .join(Package, Investment.package_id == Package.id)
@@ -191,19 +194,50 @@ class CooperativeInvestmentService:
                 detail="Investment detail record not found.",
             )
 
+        package = inv.package
+        package_farmers = getattr(package, "package_farmers", []) or []
+
+        if package_farmers:
+            avg_progress = sum(getattr(pf, "progress_percentage", 0.0)
+                               for pf in package_farmers) / len(package_farmers)
+        else:
+            avg_progress = 0.0
+
+        payback_date = getattr(package, "expected_payback_date", None)
+        today = date.today()
+
+        if inv.status == InvestmentStatus.REPAID:
+            settlement_status = SettlementStatus.COMPLETED
+        elif inv.status == InvestmentStatus.OVERDUE or (payback_date and payback_date < today):
+            settlement_status = SettlementStatus.OVERDUE
+        else:
+            settlement_status = SettlementStatus.PENDING
+
         return CooperativeInvestmentDetail(
             id=inv.id,
             investor_id_code=getattr(
-                inv.investor, "display_id", f"ID-{str(inv.investor_id)[:5]}"),
+                inv.investor, "display_id", f"ID-{str(inv.investor_id)[:5]}"
+            ),
             investor_name=f"{inv.investor.first_name or ''} {inv.investor.last_name or ''}".strip(
-            ) or inv.investor.email,
+            )
+            or inv.investor.email,
             investor_avatar=getattr(inv.investor, "avatar_url", None),
-            investor_is_active=inv.investor.is_active,
-            package_title=inv.package.title,
-            package_category=getattr(inv.package, "category", "Crop Farming"),
+            investor_is_active=getattr(inv.investor, "is_active", True),
+            package_title=package.title,
+            package_category=getattr(package, "category", "Crop Farming"),
             amount_invested=inv.amount,
             date_invested=inv.created_at,
             payment_method=getattr(inv, "payment_method", "Bank Transfer"),
             transaction_reference=getattr(inv, "transaction_reference", None),
+
+
+            farming_progress=round(avg_progress, 2),
+            farming_cycle=getattr(package, "farming_cycle", "N/A"),
+            farmers_supported=len(package_farmers),
+
+            expected_settlement_date=payback_date or today,
+            expected_settlement_amount=inv.expected_farmer_payout,
+            settlement_status=settlement_status,
+
             status=inv.status,
         )

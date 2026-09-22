@@ -1,4 +1,3 @@
-# app/models/packageModel.py
 import uuid
 from datetime import date
 from enum import Enum
