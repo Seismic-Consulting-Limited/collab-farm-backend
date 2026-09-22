@@ -22,6 +22,7 @@ app = FastAPI(title="CollabFarm", debug=True, lifespan=lifespan)
 
 origins = [
     "http://localhost:3000",
+    "http://localhost:5173",
     "https://your-frontend-domain.vercel.app",
     "*",
 ]
