@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from fastapi import BackgroundTasks, HTTPException, Request, status
 from fastapi_users.exceptions import UserAlreadyExists, UserNotExists
 from fastapi_users.router.common import ErrorCode
@@ -11,15 +12,15 @@ from app.schemas.user_schema import (
     ForgotPasswordSchema,
     ResetPasswordSchema,
     UserCreate,
+    VerifyOTPSchema,
 )
 from app.utils.emails import (
     send_reset_email_background,
-    send_welcome_email,
     send_verification_email_background,
+    send_welcome_email,
 )
 from app.utils.security import (
-    create_email_verification_token,
-    decode_email_verification_token,
+    generate_otp,
     generate_reset_token,
     verify_reset_token,
 )
@@ -68,47 +69,67 @@ class AuthService:
         if user is None or not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=ErrorCode.LOGIN_BAD_CREDENTIALS,
+                detail="Bad Credentials",
             )
 
         token = await self.strategy.write_token(user)
         return {"access_token": token, "token_type": "bearer"}
 
-    async def register(self, user_create: UserCreate, background_tasks: BackgroundTasks):
+    async def register(
+        self, user_create: UserCreate, background_tasks: BackgroundTasks
+    ):
         try:
             user = await self.user_manager.create(user_create)
 
+            # 1. Generate 6-digit OTP & 15-minute expiration
+            otp = generate_otp()
+            expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+            # 2. Save OTP to user record
+            await self.user_manager.user_db.update(
+                user,
+                {
+                    "email_otp": otp,
+                    "email_otp_expires_at": expires_at,
+                },
+            )
+
+            # 3. Queue emails
             send_welcome_email(
                 email_to=user.email,
                 background_tasks=background_tasks,
                 first_name=getattr(user, "first_name", None),
             )
 
-            token = create_email_verification_token(user.email)
             send_verification_email_background(
-                user.email, token, background_tasks)
+                user.email, otp, background_tasks
+            )
 
-            return user
+            # 4. Generate bearer token for immediate frontend session
+            access_token = await self.strategy.write_token(user)
+
+            return {
+                "access_token": access_token,
+                "token_type": "bearer",
+                "user": {
+                    "id": str(user.id),
+                    "email": user.email,
+                    "is_verified": user.is_verified,
+                },
+            }
         except UserAlreadyExists:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=ErrorCode.REGISTER_USER_ALREADY_EXISTS,
+                detail="User already exists.",
             )
 
-    async def verify_email(self, token: str) -> dict:
-        email = decode_email_verification_token(token)
-        if not email:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired verification token.",
-            )
-
+    async def verify_email_otp(self, payload: VerifyOTPSchema) -> dict:
         try:
-            user = await self.user_manager.get_by_email(email)
+            user = await self.user_manager.get_by_email(payload.email)
         except UserNotExists:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="User account associated with this token was not found.",
+                detail="User account associated with this email was not found.",
             )
 
         if user.is_verified:
@@ -117,7 +138,30 @@ class AuthService:
                 "message": "Account is already verified.",
             }
 
-        await self.user_manager.user_db.update(user, {"is_verified": True})
+        # Validate OTP match
+        if not user.email_otp or user.email_otp != payload.otp:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid verification OTP.",
+            )
+
+        # Validate OTP expiration
+        now = datetime.now(timezone.utc)
+        if user.email_otp_expires_at and user.email_otp_expires_at < now:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Verification OTP has expired. Please request a new one.",
+            )
+
+        # Mark verified & clear OTP
+        await self.user_manager.user_db.update(
+            user,
+            {
+                "is_verified": True,
+                "email_otp": None,
+                "email_otp_expires_at": None,
+            },
+        )
 
         return {
             "status": "success",
@@ -141,12 +185,23 @@ class AuthService:
                 detail="Account is already verified.",
             )
 
-        token = create_email_verification_token(user.email)
-        send_verification_email_background(user.email, token, background_tasks)
+        # Generate new OTP & expiration
+        otp = generate_otp()
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+        await self.user_manager.user_db.update(
+            user,
+            {
+                "email_otp": otp,
+                "email_otp_expires_at": expires_at,
+            },
+        )
+
+        send_verification_email_background(user.email, otp, background_tasks)
 
         return {
             "status": "success",
-            "message": "Verification email has been sent successfully.",
+            "message": "A new verification OTP has been sent to your email.",
         }
 
     async def forgot_password(
@@ -183,7 +238,8 @@ class AuthService:
             )
 
         hashed_password = self.user_manager.password_helper.hash(
-            payload.new_password)
+            payload.new_password
+        )
         await self.user_manager.user_db.update(
             user, {"hashed_password": hashed_password}
         )
@@ -204,7 +260,8 @@ class AuthService:
             )
 
         new_hashed_password = self.user_manager.password_helper.hash(
-            payload.new_password)
+            payload.new_password
+        )
         await self.user_manager.user_db.update(
             user, {"hashed_password": new_hashed_password}
         )

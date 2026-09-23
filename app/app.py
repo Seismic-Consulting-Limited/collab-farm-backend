@@ -21,10 +21,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="CollabFarm", debug=True, lifespan=lifespan)
 
 origins = [
-    "http://localhost:3000",
     "http://localhost:5173",
-    "https://your-frontend-domain.vercel.app",
-    "*",
 ]
 
 app.add_middleware(

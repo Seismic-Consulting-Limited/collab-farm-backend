@@ -1,13 +1,14 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.db import get_async_session
 from app.schemas.user_schema import (
     ForgotPasswordSchema,
     ResetPasswordSchema,
     UserCreate,
-    UserRead,
+    VerifyOTPSchema,
 )
 from app.services.auth_service import AuthService
 from app.users import UserManager, auth_backend, get_user_manager
@@ -27,23 +28,26 @@ async def login(
     )
 
 
-@router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+@router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(
     user_create: UserCreate,
     background_tasks: BackgroundTasks,
     user_manager: UserManager = Depends(get_user_manager),
+    strategy=Depends(auth_backend.get_strategy),
 ):
-    return await AuthService(user_manager=user_manager).register(
-        user_create, background_tasks
-    )
+    return await AuthService(
+        user_manager=user_manager, strategy=strategy
+    ).register(user_create, background_tasks)
 
 
-@router.get("/verify-email", status_code=status.HTTP_200_OK)
-async def verify_email(
-    token: str = Query(..., description="Email verification token"),
+@router.post("/verify-otp", status_code=status.HTTP_200_OK)
+async def verify_otp(
+    payload: VerifyOTPSchema,
     user_manager: UserManager = Depends(get_user_manager),
 ):
-    return await AuthService(user_manager=user_manager).verify_email(token)
+    return await AuthService(user_manager=user_manager).verify_email_otp(
+        payload
+    )
 
 
 @router.post("/resend-verification", status_code=status.HTTP_200_OK)
@@ -52,9 +56,9 @@ async def resend_verification(
     background_tasks: BackgroundTasks,
     user_manager: UserManager = Depends(get_user_manager),
 ):
-    return await AuthService(user_manager=user_manager).resend_verification_email(
-        email, background_tasks
-    )
+    return await AuthService(
+        user_manager=user_manager
+    ).resend_verification_email(email, background_tasks)
 
 
 @router.post("/forgot-password")

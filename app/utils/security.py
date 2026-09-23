@@ -1,10 +1,12 @@
-from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from passlib.context import CryptContext
-import os
-from dotenv import load_dotenv
-import jwt
 from datetime import datetime, timedelta
+import os
+import secrets
 from typing import Optional
+
+from dotenv import load_dotenv
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+import jwt
+from passlib.context import CryptContext
 
 load_dotenv()
 
@@ -16,6 +18,10 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 serializer = URLSafeTimedSerializer(SECRET)
 
 
+def generate_otp(length: int = 6) -> str:
+    return "".join(str(secrets.randbelow(10)) for _ in range(length))
+
+
 def generate_reset_token(email: str) -> str:
     return serializer.dumps(email, salt="password-reset-salt")
 
@@ -23,7 +29,8 @@ def generate_reset_token(email: str) -> str:
 def verify_reset_token(token: str, max_age: int = 3600) -> str | None:
     try:
         email = serializer.loads(
-            token, salt="password-reset-salt", max_age=max_age)
+            token, salt="password-reset-salt", max_age=max_age
+        )
         return email
     except (SignatureExpired, BadSignature):
         return None
@@ -34,7 +41,9 @@ def hash_password(password: str) -> str:
 
 
 def create_email_verification_token(email: str) -> str:
-    expire = datetime.utcnow() + timedelta(hours=VERIFICATION_TOKEN_EXPIRE_HOURS)
+    expire = datetime.utcnow() + timedelta(
+        hours=VERIFICATION_TOKEN_EXPIRE_HOURS
+    )
     payload = {
         "sub": email,
         "scope": "email_verification",

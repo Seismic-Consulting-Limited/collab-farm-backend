@@ -68,3 +68,7 @@ class ChangePassword(BaseModel):
     new_password: str = Field(
         ..., min_length=8, description="Enter New Password"
     )
+
+class VerifyOTPSchema(BaseModel):
+    email: EmailStr
+    otp: str
