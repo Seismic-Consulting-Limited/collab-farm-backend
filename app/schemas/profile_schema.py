@@ -75,7 +75,7 @@ class CooperativeProfileBase(BaseModel):
     cooperative_name: str
     year_established: int
     registration_number: str
-    email: EmailStr
+    phone_number: str
     address: str
     lga: str
     state: str

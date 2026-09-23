@@ -14,6 +14,7 @@ from app.schemas.user_schema import (
 )
 from app.utils.emails import (
     send_reset_email_background,
+    send_welcome_email,
     send_verification_email_background,
 )
 from app.utils.security import (
@@ -77,7 +78,12 @@ class AuthService:
         try:
             user = await self.user_manager.create(user_create)
 
-            # Generate token and send verification email in background
+            send_welcome_email(
+                email_to=user.email,
+                background_tasks=background_tasks,
+                first_name=getattr(user, "first_name", None),
+            )
+
             token = create_email_verification_token(user.email)
             send_verification_email_background(
                 user.email, token, background_tasks)

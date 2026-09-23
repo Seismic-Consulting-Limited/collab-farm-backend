@@ -76,7 +76,7 @@ class CooperativeProfile(Base, TimestampMixin):
     cooperative_name: Mapped[str] = mapped_column(String, nullable=False)
     year_established: Mapped[int] = mapped_column(Integer, nullable=False)
     registration_number: Mapped[str] = mapped_column(String, nullable=False)
-    email: Mapped[str] = mapped_column(String, nullable=False)
+    phone_number: Mapped[str] = mapped_column(String, nullable=False)
     address: Mapped[str] = mapped_column(String, nullable=False)
     lga: Mapped[str] = mapped_column(String, nullable=False)
     state: Mapped[str] = mapped_column(String, nullable=False)
