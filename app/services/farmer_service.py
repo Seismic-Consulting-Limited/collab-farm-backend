@@ -2,7 +2,7 @@ import math
 import uuid
 from typing import List, Optional
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -10,7 +10,14 @@ from app.models.farmer_model import Farm, Farmer, FarmStatus, Gender, WRSStatus
 from app.models.investment_model import Investment, InvestmentStatus
 from app.models.package_model import PackageFarmer
 from app.models.user_model import User, UserRole
-from app.schemas.farmer_schema import FarmCreate, FarmStatusUpdate, PaginatedFarmerResponse
+from app.schemas.farmer_schema import (
+    FarmCreate,
+    FarmStatusUpdate,
+    FarmerDirectoryItem,
+    FarmerDirectoryMetrics,
+    FarmerDirectoryResponse,
+    PaginatedFarmerResponse,
+)
 from app.utils.cloudinary import upload_kyc_document
 
 
@@ -51,6 +58,120 @@ class FarmerService:
             )
         return farmer
 
+    async def get_directory(
+        self,
+        cooperative_id: Optional[uuid.UUID] = None,
+        search: Optional[str] = None,
+        crop_type: Optional[str] = None,
+        status_filter: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 10,
+    ) -> FarmerDirectoryResponse:
+        base_query = select(Farmer)
+
+        if cooperative_id:
+            base_query = base_query.where(Farmer.cooperative_id == cooperative_id)
+
+        # --- 1. Top Bar Directory Metrics ---
+        total_stmt = select(func.count()).select_from(base_query.subquery())
+        verified_stmt = select(func.count()).select_from(
+            base_query.where(Farmer.wrs_status == WRSStatus.VERIFIED).subquery()
+        )
+        pending_stmt = select(func.count()).select_from(
+            base_query.where(Farmer.wrs_status == WRSStatus.NOT_VERIFIED).subquery()
+        )
+
+        total_farmers = (await self.db.execute(total_stmt)).scalar() or 0
+        verified_farmers = (await self.db.execute(verified_stmt)).scalar() or 0
+        pending_verification = (await self.db.execute(pending_stmt)).scalar() or 0
+
+        metrics = FarmerDirectoryMetrics(
+            total_farmers=total_farmers,
+            verified_farmers=verified_farmers,
+            pending_verification=pending_verification,
+            removed_farmers=0,
+        )
+
+        # --- 2. Filter & Search Logic ---
+        filtered_query = base_query.options(selectinload(Farmer.farms))
+
+        if status_filter:
+            norm_status = status_filter.strip().upper()
+            if norm_status == "VERIFIED":
+                filtered_query = filtered_query.where(
+                    Farmer.wrs_status == WRSStatus.VERIFIED
+                )
+            elif norm_status in ["PENDING", "NOT_VERIFIED"]:
+                filtered_query = filtered_query.where(
+                    Farmer.wrs_status == WRSStatus.NOT_VERIFIED
+                )
+
+        if crop_type and crop_type.lower() != "all":
+            filtered_query = filtered_query.join(Farmer.farms).where(
+                or_(
+                    Farm.farming_category.ilike(f"%{crop_type}%"),
+                    Farm.name.ilike(f"%{crop_type}%"),
+                )
+            )
+
+        if search and search.strip():
+            pattern = f"%{search.strip()}%"
+            filtered_query = filtered_query.outerjoin(Farmer.farms).where(
+                or_(
+                    Farmer.full_name.ilike(pattern),
+                    Farmer.nin.ilike(pattern),
+                    Farmer.phone_number.ilike(pattern),
+                    Farm.farming_category.ilike(pattern),
+                    Farm.name.ilike(pattern),
+                )
+            )
+
+        # Get total matching record count
+        count_stmt = select(func.count()).select_from(
+            filtered_query.distinct().subquery()
+        )
+        total_filtered = (await self.db.execute(count_stmt)).scalar() or 0
+
+        # --- 3. Pagination ---
+        offset = (page - 1) * page_size
+        paginated_query = (
+            filtered_query.distinct()
+            .order_by(Farmer.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
+
+        result = await self.db.execute(paginated_query)
+        farmers = result.scalars().unique().all()
+
+        items = [
+            FarmerDirectoryItem(
+                id=farmer.id,
+                full_name=farmer.full_name,
+                photo=farmer.photo,
+                crop_type=farmer.farms[0].farming_category
+                if farmer.farms
+                else "Unspecified",
+                phone_number=farmer.phone_number,
+                date_added=farmer.created_at,
+                status="Verified"
+                if farmer.wrs_status == WRSStatus.VERIFIED
+                else "Pending",
+            )
+            for farmer in farmers
+        ]
+
+        total_pages = math.ceil(total_filtered / page_size) if page_size > 0 else 1
+
+        return FarmerDirectoryResponse(
+            metrics=metrics,
+            items=items,
+            total=total_filtered,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages,
+        )
+
     async def add_farmer(
         self,
         user: User,
@@ -77,7 +198,9 @@ class FarmerService:
 
         photo_url = None
         if photo:
-            photo_res = await upload_kyc_document(photo, "collabfarm/farmer_photos")
+            photo_res = await upload_kyc_document(
+                photo, "collabfarm/farmer_photos"
+            )
             photo_url = photo_res.get("secure_url")
 
         farmer = Farmer(
@@ -123,7 +246,8 @@ class FarmerService:
             .options(
                 selectinload(Farmer.farms),
                 selectinload(Farmer.cooperative).selectinload(
-                    User.cooperative_profile),
+                    User.cooperative_profile
+                ),
             )
             .distinct()
         )
@@ -139,7 +263,8 @@ class FarmerService:
 
         if farming_category:
             query = query.where(
-                Farm.farming_category.ilike(f"%{farming_category}%"))
+                Farm.farming_category.ilike(f"%{farming_category}%")
+            )
 
         if wrs_status:
             query = query.where(Farmer.wrs_status == wrs_status)
@@ -222,7 +347,9 @@ class FarmerService:
                 setattr(farmer, key, value)
 
         if photo:
-            photo_res = await upload_kyc_document(photo, "collabfarm/farmer_photos")
+            photo_res = await upload_kyc_document(
+                photo, "collabfarm/farmer_photos"
+            )
             farmer.photo = photo_res["secure_url"]
 
         await self.db.commit()
@@ -282,7 +409,10 @@ class FarmerService:
         return new_farm
 
     async def update_farm_status(
-        self, cooperative_id: uuid.UUID, farm_id: uuid.UUID, status_update: FarmStatusUpdate
+        self,
+        cooperative_id: uuid.UUID,
+        farm_id: uuid.UUID,
+        status_update: FarmStatusUpdate,
     ) -> Farm:
         stmt = (
             select(Farm)
@@ -304,12 +434,18 @@ class FarmerService:
         return farm
 
     async def get_farmer_farms(
-        self, cooperative_id: uuid.UUID, farmer_id: uuid.UUID, active_only: bool = False
+        self,
+        cooperative_id: uuid.UUID,
+        farmer_id: uuid.UUID,
+        active_only: bool = False,
     ) -> List[Farm]:
         stmt = (
             select(Farm)
             .join(Farmer, Farm.farmer_id == Farmer.id)
-            .where(Farm.farmer_id == farmer_id, Farmer.cooperative_id == cooperative_id)
+            .where(
+                Farm.farmer_id == farmer_id,
+                Farmer.cooperative_id == cooperative_id,
+            )
         )
 
         if active_only:

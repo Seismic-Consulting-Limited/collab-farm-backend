@@ -142,3 +142,31 @@ class PaginatedFarmerResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class FarmerDirectoryMetrics(BaseModel):
+    total_farmers: int
+    verified_farmers: int
+    pending_verification: int
+    removed_farmers: int = 0
+
+
+class FarmerDirectoryItem(BaseModel):
+    id: uuid.UUID
+    full_name: str
+    photo: Optional[str] = None
+    crop_type: Optional[str] = None
+    phone_number: str
+    date_added: datetime
+    status: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FarmerDirectoryResponse(BaseModel):
+    metrics: FarmerDirectoryMetrics
+    items: list[FarmerDirectoryItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int

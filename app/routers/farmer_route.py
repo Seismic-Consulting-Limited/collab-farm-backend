@@ -1,16 +1,26 @@
 import json
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_async_session
 from app.models.farmer_model import Gender, WRSStatus
-from app.models.user_model import User
+from app.models.user_model import User, UserRole
 from app.schemas.farmer_schema import (
     FarmCreate,
-    FarmRead,
+    FarmerDirectoryResponse,
     FarmerRead,
+    FarmRead,
     FarmStatusUpdate,
     PaginatedFarmerResponse,
 )
@@ -78,6 +88,43 @@ async def list_farmers(
     )
 
 
+@router.get(
+    "/directory",
+    response_model=FarmerDirectoryResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_farmer_directory(
+    search: Optional[str] = Query(
+        None, description="Search by name, NIN, phone, or crop category"
+    ),
+    crop_type: Optional[str] = Query(
+        None, description="Filter by crop category / farming type"
+    ),
+    status_filter: Optional[str] = Query(
+        None,
+        alias="status",
+        description="Filter status (Verified, Pending / Not_Verified)",
+    ),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    cooperative_id = (
+        user.id if getattr(
+            user, "role", None) == UserRole.COOPERATIVE else None
+    )
+
+    return await FarmerService(db).get_directory(
+        cooperative_id=cooperative_id,
+        search=search,
+        crop_type=crop_type,
+        status_filter=status_filter,
+        page=page,
+        page_size=page_size,
+    )
+
+
 @router.get("/{farmer_id}", response_model=FarmerRead)
 async def get_farmer_profile(
     farmer_id: uuid.UUID,
@@ -123,7 +170,9 @@ async def delete_farmer(
 
 
 @router.post(
-    "/{farmer_id}/farms", response_model=FarmRead, status_code=status.HTTP_201_CREATED
+    "/{farmer_id}/farms",
+    response_model=FarmRead,
+    status_code=status.HTTP_201_CREATED,
 )
 async def add_farm_to_farmer(
     farmer_id: uuid.UUID,
