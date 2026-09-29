@@ -58,6 +58,11 @@ class User(SQLAlchemyBaseUserTableUUID, Base, TimestampMixin):
         SQLEnum(UserRole, native_enum=False),
         nullable=False,
     )
+    
+    email_otp: Mapped[Optional[str]] = mapped_column(
+        String(10), nullable=True, default=None
+    )
+    
 # investor type is now at profile update no longer here
     investor_type: Mapped[Optional[InvestorType]] = mapped_column(
         SQLEnum(InvestorType, native_enum=False),

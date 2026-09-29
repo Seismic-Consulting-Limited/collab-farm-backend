@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from app.models.farmer_model import Farmer
     from app.models.investment_model import Investment
     from app.models.user_model import User
+    from app.models.disbursement_model import Disbursement
 
 
 class PackageType(str, Enum):
@@ -83,6 +84,9 @@ class Package(Base, TimestampMixin):
         "Investment",
         back_populates="package",
         cascade="all, delete-orphan",
+    )
+    disbursements: Mapped[List["Disbursement"]] = relationship(
+        "Disbursement", back_populates="package", cascade="all, delete-orphan"
     )
 
 
