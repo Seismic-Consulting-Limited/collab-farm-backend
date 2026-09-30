@@ -70,15 +70,18 @@ class FarmerService:
         base_query = select(Farmer)
 
         if cooperative_id:
-            base_query = base_query.where(Farmer.cooperative_id == cooperative_id)
+            base_query = base_query.where(
+                Farmer.cooperative_id == cooperative_id)
 
         # --- 1. Top Bar Directory Metrics ---
         total_stmt = select(func.count()).select_from(base_query.subquery())
         verified_stmt = select(func.count()).select_from(
-            base_query.where(Farmer.wrs_status == WRSStatus.VERIFIED).subquery()
+            base_query.where(Farmer.wrs_status ==
+                             WRSStatus.VERIFIED).subquery()
         )
         pending_stmt = select(func.count()).select_from(
-            base_query.where(Farmer.wrs_status == WRSStatus.NOT_VERIFIED).subquery()
+            base_query.where(Farmer.wrs_status ==
+                             WRSStatus.NOT_VERIFIED).subquery()
         )
 
         total_farmers = (await self.db.execute(total_stmt)).scalar() or 0
@@ -151,7 +154,7 @@ class FarmerService:
                 photo=farmer.photo,
                 crop_type=farmer.farms[0].farming_category
                 if farmer.farms
-                else "Unspecified",
+                else "No Farms",
                 phone_number=farmer.phone_number,
                 date_added=farmer.created_at,
                 status="Verified"
@@ -161,7 +164,8 @@ class FarmerService:
             for farmer in farmers
         ]
 
-        total_pages = math.ceil(total_filtered / page_size) if page_size > 0 else 1
+        total_pages = math.ceil(
+            total_filtered / page_size) if page_size > 0 else 1
 
         return FarmerDirectoryResponse(
             metrics=metrics,
@@ -181,8 +185,7 @@ class FarmerService:
         gender: Gender,
         photo: Optional[UploadFile] = None,
         additional_info: Optional[str] = None,
-        # i am automatically verifying farmers from here
-        wrs_status: WRSStatus = WRSStatus.VERIFIED,
+        wrs_status: WRSStatus = WRSStatus.NOT_VERIFIED,
         farms: Optional[List[FarmCreate]] = None,
     ) -> Farmer:
         if user.role != UserRole.COOPERATIVE:
@@ -217,6 +220,7 @@ class FarmerService:
         self.db.add(farmer)
         await self.db.flush()
 
+        # Safely checks if farms list was supplied
         if farms:
             for farm_item in farms:
                 farm = Farm(
@@ -241,56 +245,49 @@ class FarmerService:
         page: int = 1,
         page_size: int = 12,
     ) -> PaginatedFarmerResponse:
-        query = (
-            select(Farmer)
-            .outerjoin(Farmer.farms)
-            .options(
-                selectinload(Farmer.farms),
-                selectinload(Farmer.cooperative).selectinload(
-                    User.cooperative_profile
-                ),
-            )
-            .distinct()
-        )
-
-        if search:
-            query = query.where(
-                Farmer.full_name.ilike(f"%{search}%")
-                | Farmer.nin.ilike(f"%{search}%")
-                | Farm.name.ilike(f"%{search}%")
-                | Farm.farming_category.ilike(f"%{search}%")
-                | Farm.location.ilike(f"%{search}%")
-            )
-
-        if farming_category:
-            query = query.where(
-                Farm.farming_category.ilike(f"%{farming_category}%")
-            )
-
-        if wrs_status:
-            query = query.where(Farmer.wrs_status == wrs_status)
+        base_query = select(Farmer).options(selectinload(Farmer.farms))
 
         if cooperative_id:
-            query = query.where(Farmer.cooperative_id == cooperative_id)
+            base_query = base_query.where(
+                Farmer.cooperative_id == cooperative_id)
+        if wrs_status:
+            base_query = base_query.where(Farmer.wrs_status == wrs_status)
+        if farming_category:
+            base_query = base_query.join(Farmer.farms).where(
+                Farm.farming_category.ilike(f"%{farming_category}%")
+            )
+        if search:
+            pattern = f"%{search.strip()}%"
+            base_query = base_query.outerjoin(Farmer.farms).where(
+                or_(
+                    Farmer.full_name.ilike(pattern),
+                    Farmer.phone_number.ilike(pattern),
+                    Farmer.nin.ilike(pattern),
+                )
+            )
 
-        query = query.order_by(Farmer.created_at.desc())
-
-        count_query = select(func.count()).select_from(query.subquery())
-        total_result = await self.db.execute(count_query)
-        total = total_result.scalar_one()
+        count_stmt = select(func.count()).select_from(
+            base_query.distinct().subquery())
+        total = (await self.db.execute(count_stmt)).scalar() or 0
 
         offset = (page - 1) * page_size
-        query = query.offset(offset).limit(page_size)
-
+        query = (
+            base_query.distinct()
+            .order_by(Farmer.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
         result = await self.db.execute(query)
-        farmers = result.scalars().all()
+        farmers = result.scalars().unique().all()
+
+        total_pages = math.ceil(total / page_size) if page_size > 0 else 1
 
         return PaginatedFarmerResponse(
             items=farmers,
             total=total,
             page=page,
             page_size=page_size,
-            total_pages=math.ceil(total / page_size) if total > 0 else 1,
+            total_pages=total_pages,
         )
 
     async def get_farmer_profile(self, farmer_id: uuid.UUID) -> Farmer:

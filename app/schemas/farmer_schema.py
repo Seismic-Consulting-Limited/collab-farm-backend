@@ -48,11 +48,16 @@ class CooperativeSummary(BaseModel):
 class FarmCreate(BaseModel):
     name: str = Field(..., min_length=2, description="Name of the farm")
     location: str = Field(..., description="Location of the farm")
-    size_in_hectares: float = Field(..., gt=0,
-                                    description="Size of farm in hectares")
-    farming_category: str = Field(...,
-                                  description="e.g. Crop Farming, Livestock, Mixed")
+    size_in_hectares: float = Field(..., gt=0, description="Size of farm in hectares")
+    farming_category: str = Field(..., description="e.g. Crop Farming, Livestock, Mixed")
     status: FarmStatus = FarmStatus.ACTIVE
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip().upper()
+        return value
 
 
 class FarmUpdate(BaseModel):
@@ -62,9 +67,23 @@ class FarmUpdate(BaseModel):
     farming_category: Optional[str] = None
     status: Optional[FarmStatus] = None
 
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip().upper()
+        return value
+
 
 class FarmStatusUpdate(BaseModel):
     status: FarmStatus
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip().upper()
+        return value
 
 
 class FarmRead(BaseModel):
@@ -86,13 +105,12 @@ FarmResponse = FarmRead
 
 class FarmerCreate(BaseModel):
     full_name: str = Field(..., min_length=2)
-    nin: str = Field(...,
-                     description="11-digit National Identification Number")
+    nin: str = Field(..., description="11-digit National Identification Number")
     phone_number: str
     gender: Gender
-    additional_info: Optional[str] = None
     wrs_status: WRSStatus = WRSStatus.NOT_VERIFIED
-    farms: list[FarmCreate] = []
+    additional_info: Optional[str] = None
+    farms: Optional[list[FarmCreate]] = Field(default_factory=list)
 
     @field_validator("nin")
     @classmethod
@@ -100,6 +118,20 @@ class FarmerCreate(BaseModel):
         if not v.isdigit() or len(v) != 11:
             raise ValueError("NIN must consist of exactly 11 digits.")
         return v
+
+    @field_validator("farms", mode="before")
+    @classmethod
+    def handle_none_farms(cls, value: Any) -> Any:
+        if value is None:
+            return []
+        return value
+
+    @field_validator("gender", "wrs_status", mode="before")
+    @classmethod
+    def normalize_farmer_enums(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip().upper()
+        return value
 
 
 class FarmerUpdate(BaseModel):
@@ -117,6 +149,13 @@ class FarmerUpdate(BaseModel):
             raise ValueError("NIN must consist of exactly 11 digits.")
         return v
 
+    @field_validator("gender", "wrs_status", mode="before")
+    @classmethod
+    def normalize_farmer_enums(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip().upper()
+        return value
+
 
 class FarmerRead(BaseModel):
     id: uuid.UUID
@@ -129,7 +168,7 @@ class FarmerRead(BaseModel):
     additional_info: Optional[str] = None
     wrs_status: WRSStatus
     cooperative: Optional[CooperativeSummary] = None
-    farms: list[FarmRead] = []
+    farms: list[FarmRead] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -155,7 +194,7 @@ class FarmerDirectoryItem(BaseModel):
     id: uuid.UUID
     full_name: str
     photo: Optional[str] = None
-    crop_type: Optional[str] = None
+    crop_type: Optional[str] = Field(default="No Farms")
     phone_number: str
     date_added: datetime
     status: str

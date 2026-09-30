@@ -3,7 +3,9 @@ import uuid
 from typing import TYPE_CHECKING, List, Optional
 from sqlalchemy import Enum as SQLEnum, Float, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.models.base import Base, TimestampMixin
 
 
@@ -53,10 +55,26 @@ class Farmer(Base, TimestampMixin):
     )
 
     cooperative: Mapped["User"] = relationship(
-        "User", back_populates="farmers")
+        "User", back_populates="farmers"
+    )
     farms: Mapped[List["Farm"]] = relationship(
         "Farm", back_populates="farmer", cascade="all, delete-orphan"
     )
+
+    # --- Formatting Helpers ---
+    @hybrid_property
+    def formatted_created_at(self) -> Optional[str]:
+        """Returns created_at formatted as MM/DD/YYYY, HH:MM AM/PM"""
+        if getattr(self, "created_at", None):
+            return self.created_at.strftime("%m/%d/%Y, %I:%M %p")
+        return None
+
+    @hybrid_property
+    def formatted_updated_at(self) -> Optional[str]:
+        """Returns updated_at formatted as MM/DD/YYYY, HH:MM AM/PM"""
+        if getattr(self, "updated_at", None):
+            return self.updated_at.strftime("%m/%d/%Y, %I:%M %p")
+        return None
 
 
 class Farm(Base, TimestampMixin):
@@ -80,3 +98,18 @@ class Farm(Base, TimestampMixin):
     )
 
     farmer: Mapped["Farmer"] = relationship("Farmer", back_populates="farms")
+
+    # --- Formatting Helpers ---
+    @hybrid_property
+    def formatted_created_at(self) -> Optional[str]:
+        """Returns created_at formatted as MM/DD/YYYY, HH:MM AM/PM"""
+        if getattr(self, "created_at", None):
+            return self.created_at.strftime("%m/%d/%Y, %I:%M %p")
+        return None
+
+    @hybrid_property
+    def formatted_updated_at(self) -> Optional[str]:
+        """Returns updated_at formatted as MM/DD/YYYY, HH:MM AM/PM"""
+        if getattr(self, "updated_at", None):
+            return self.updated_at.strftime("%m/%d/%Y, %I:%M %p")
+        return None

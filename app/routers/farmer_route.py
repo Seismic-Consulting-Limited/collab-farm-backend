@@ -44,10 +44,22 @@ async def add_farmer(
     db: AsyncSession = Depends(get_async_session),
 ):
     farms: Optional[List[FarmCreate]] = None
-    if farms_json:
+
+    if farms_json and farms_json.strip() and farms_json.strip() != "null":
         try:
             raw_farms = json.loads(farms_json)
-            farms = [FarmCreate(**f) for f in raw_farms]
+
+            if isinstance(raw_farms, str):
+                raw_farms = json.loads(raw_farms)
+
+            parsed_farms = []
+            if isinstance(raw_farms, list):
+                for item in raw_farms:
+                    if isinstance(item, str):
+                        item = json.loads(item)
+                    parsed_farms.append(FarmCreate(**item))
+
+            farms = parsed_farms
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -166,7 +178,7 @@ async def delete_farmer(
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    return await FarmerService(db).delete_farmer(farmer_id=farmer_id, user=user)
+    await FarmerService(db).delete_farmer(farmer_id=farmer_id, user=user)
 
 
 @router.post(
