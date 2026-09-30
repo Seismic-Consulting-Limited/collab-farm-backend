@@ -44,6 +44,8 @@ class Farmer(Base, TimestampMixin):
     gender: Mapped[Gender] = mapped_column(
         SQLEnum(Gender, native_enum=False), nullable=False
     )
+    farming_category: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True)
     photo: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     additional_info: Mapped[Optional[str]
                             ] = mapped_column(String, nullable=True)
@@ -61,7 +63,14 @@ class Farmer(Base, TimestampMixin):
         "Farm", back_populates="farmer", cascade="all, delete-orphan"
     )
 
-    # --- Formatting Helpers ---
+    # --- Formatting & Aliases ---
+    @hybrid_property
+    def date_added(self) -> Optional[str]:
+        """Returns created_at formatted as MM/DD/YYYY, HH:MM AM/PM"""
+        if getattr(self, "created_at", None):
+            return self.created_at.strftime("%m/%d/%Y, %I:%M %p")
+        return None
+
     @hybrid_property
     def formatted_created_at(self) -> Optional[str]:
         """Returns created_at formatted as MM/DD/YYYY, HH:MM AM/PM"""
@@ -100,6 +109,13 @@ class Farm(Base, TimestampMixin):
     farmer: Mapped["Farmer"] = relationship("Farmer", back_populates="farms")
 
     # --- Formatting Helpers ---
+    @hybrid_property
+    def date_added(self) -> Optional[str]:
+        """Returns created_at formatted as MM/DD/YYYY, HH:MM AM/PM"""
+        if getattr(self, "created_at", None):
+            return self.created_at.strftime("%m/%d/%Y, %I:%M %p")
+        return None
+
     @hybrid_property
     def formatted_created_at(self) -> Optional[str]:
         """Returns created_at formatted as MM/DD/YYYY, HH:MM AM/PM"""

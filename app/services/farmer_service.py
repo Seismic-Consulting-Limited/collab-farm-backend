@@ -110,8 +110,9 @@ class FarmerService:
                 )
 
         if crop_type and crop_type.lower() != "all":
-            filtered_query = filtered_query.join(Farmer.farms).where(
+            filtered_query = filtered_query.outerjoin(Farmer.farms).where(
                 or_(
+                    Farmer.farming_category.ilike(f"%{crop_type}%"),
                     Farm.farming_category.ilike(f"%{crop_type}%"),
                     Farm.name.ilike(f"%{crop_type}%"),
                 )
@@ -124,6 +125,7 @@ class FarmerService:
                     Farmer.full_name.ilike(pattern),
                     Farmer.nin.ilike(pattern),
                     Farmer.phone_number.ilike(pattern),
+                    Farmer.farming_category.ilike(pattern),
                     Farm.farming_category.ilike(pattern),
                     Farm.name.ilike(pattern),
                 )
@@ -152,11 +154,12 @@ class FarmerService:
                 id=farmer.id,
                 full_name=farmer.full_name,
                 photo=farmer.photo,
-                crop_type=farmer.farms[0].farming_category
-                if farmer.farms
-                else "No Farms",
+                crop_type=farmer.farming_category
+                or (
+                    farmer.farms[0].farming_category if farmer.farms else "No Category"
+                ),
                 phone_number=farmer.phone_number,
-                date_added=farmer.created_at,
+                date_added=farmer.date_added,
                 status="Verified"
                 if farmer.wrs_status == WRSStatus.VERIFIED
                 else "Pending",
@@ -183,6 +186,7 @@ class FarmerService:
         nin: str,
         phone_number: str,
         gender: Gender,
+        farming_category: Optional[str] = None,
         photo: Optional[UploadFile] = None,
         additional_info: Optional[str] = None,
         wrs_status: WRSStatus = WRSStatus.NOT_VERIFIED,
@@ -213,6 +217,7 @@ class FarmerService:
             nin=nin,
             phone_number=phone_number,
             gender=gender,
+            farming_category=farming_category,
             photo=photo_url,
             additional_info=additional_info,
             wrs_status=wrs_status,
@@ -220,7 +225,6 @@ class FarmerService:
         self.db.add(farmer)
         await self.db.flush()
 
-        # Safely checks if farms list was supplied
         if farms:
             for farm_item in farms:
                 farm = Farm(
@@ -253,8 +257,11 @@ class FarmerService:
         if wrs_status:
             base_query = base_query.where(Farmer.wrs_status == wrs_status)
         if farming_category:
-            base_query = base_query.join(Farmer.farms).where(
-                Farm.farming_category.ilike(f"%{farming_category}%")
+            base_query = base_query.outerjoin(Farmer.farms).where(
+                or_(
+                    Farmer.farming_category.ilike(f"%{farming_category}%"),
+                    Farm.farming_category.ilike(f"%{farming_category}%"),
+                )
             )
         if search:
             pattern = f"%{search.strip()}%"
@@ -263,6 +270,8 @@ class FarmerService:
                     Farmer.full_name.ilike(pattern),
                     Farmer.phone_number.ilike(pattern),
                     Farmer.nin.ilike(pattern),
+                    Farmer.farming_category.ilike(pattern),
+                    Farm.farming_category.ilike(pattern),
                 )
             )
 
@@ -301,6 +310,7 @@ class FarmerService:
         nin: Optional[str] = None,
         phone_number: Optional[str] = None,
         gender: Optional[Gender] = None,
+        farming_category: Optional[str] = None,
         additional_info: Optional[str] = None,
         wrs_status: Optional[WRSStatus] = None,
         photo: Optional[UploadFile] = None,
@@ -336,6 +346,7 @@ class FarmerService:
             "nin": nin,
             "phone_number": phone_number,
             "gender": gender,
+            "farming_category": farming_category,
             "additional_info": additional_info,
             "wrs_status": wrs_status,
         }

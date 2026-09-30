@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
@@ -48,8 +48,10 @@ class CooperativeSummary(BaseModel):
 class FarmCreate(BaseModel):
     name: str = Field(..., min_length=2, description="Name of the farm")
     location: str = Field(..., description="Location of the farm")
-    size_in_hectares: float = Field(..., gt=0, description="Size of farm in hectares")
-    farming_category: str = Field(..., description="e.g. Crop Farming, Livestock, Mixed")
+    size_in_hectares: float = Field(..., gt=0,
+                                    description="Size of farm in hectares")
+    farming_category: str = Field(...,
+                                  description="e.g. Crop Farming, Livestock, Mixed")
     status: FarmStatus = FarmStatus.ACTIVE
 
     @field_validator("status", mode="before")
@@ -96,6 +98,7 @@ class FarmRead(BaseModel):
     status: FarmStatus
     created_at: datetime
     updated_at: datetime
+    date_added: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -105,9 +108,12 @@ FarmResponse = FarmRead
 
 class FarmerCreate(BaseModel):
     full_name: str = Field(..., min_length=2)
-    nin: str = Field(..., description="11-digit National Identification Number")
+    nin: str = Field(...,
+                     description="11-digit National Identification Number")
     phone_number: str
     gender: Gender
+    farming_category: Optional[str] = Field(
+        None, description="e.g. Crop Farming, Livestock, Mixed")
     wrs_status: WRSStatus = WRSStatus.NOT_VERIFIED
     additional_info: Optional[str] = None
     farms: Optional[list[FarmCreate]] = Field(default_factory=list)
@@ -139,6 +145,7 @@ class FarmerUpdate(BaseModel):
     nin: Optional[str] = None
     phone_number: Optional[str] = None
     gender: Optional[Gender] = None
+    farming_category: Optional[str] = None
     additional_info: Optional[str] = None
     wrs_status: Optional[WRSStatus] = None
 
@@ -164,6 +171,7 @@ class FarmerRead(BaseModel):
     nin: str
     phone_number: str
     gender: Gender
+    farming_category: Optional[str] = None
     photo: Optional[str] = None
     additional_info: Optional[str] = None
     wrs_status: WRSStatus
@@ -171,6 +179,7 @@ class FarmerRead(BaseModel):
     farms: list[FarmRead] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+    date_added: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -196,7 +205,7 @@ class FarmerDirectoryItem(BaseModel):
     photo: Optional[str] = None
     crop_type: Optional[str] = Field(default="No Farms")
     phone_number: str
-    date_added: datetime
+    date_added: Optional[Union[str, datetime]] = None
     status: str
 
     model_config = ConfigDict(from_attributes=True)
