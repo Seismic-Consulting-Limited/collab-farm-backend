@@ -249,19 +249,21 @@ class FarmerService:
         page: int = 1,
         page_size: int = 12,
     ) -> PaginatedFarmerResponse:
-        base_query = select(Farmer).options(selectinload(Farmer.farms))
+        # FIX: Added selectinload here to eagerly load relationship tables before serialization
+        base_query = select(Farmer).options(
+            selectinload(Farmer.farms),
+            selectinload(Farmer.cooperative).selectinload(
+                User.cooperative_profile
+            )
+        )
 
         if cooperative_id:
-            base_query = base_query.where(
-                Farmer.cooperative_id == cooperative_id)
+            base_query = base_query.where(Farmer.cooperative_id == cooperative_id)
         if wrs_status:
             base_query = base_query.where(Farmer.wrs_status == wrs_status)
         if farming_category:
-            base_query = base_query.outerjoin(Farmer.farms).where(
-                or_(
-                    Farmer.farming_category.ilike(f"%{farming_category}%"),
-                    Farm.farming_category.ilike(f"%{farming_category}%"),
-                )
+            base_query = base_query.join(Farmer.farms).where(
+                Farm.farming_category.ilike(f"%{farming_category}%")
             )
         if search:
             pattern = f"%{search.strip()}%"
@@ -269,23 +271,15 @@ class FarmerService:
                 or_(
                     Farmer.full_name.ilike(pattern),
                     Farmer.phone_number.ilike(pattern),
-                    Farmer.nin.ilike(pattern),
-                    Farmer.farming_category.ilike(pattern),
-                    Farm.farming_category.ilike(pattern),
+                    Farmer.nin.ilike(pattern)
                 )
             )
 
-        count_stmt = select(func.count()).select_from(
-            base_query.distinct().subquery())
+        count_stmt = select(func.count()).select_from(base_query.distinct().subquery())
         total = (await self.db.execute(count_stmt)).scalar() or 0
 
         offset = (page - 1) * page_size
-        query = (
-            base_query.distinct()
-            .order_by(Farmer.created_at.desc())
-            .offset(offset)
-            .limit(page_size)
-        )
+        query = base_query.distinct().order_by(Farmer.created_at.desc()).offset(offset).limit(page_size)
         result = await self.db.execute(query)
         farmers = result.scalars().unique().all()
 
@@ -296,8 +290,9 @@ class FarmerService:
             total=total,
             page=page,
             page_size=page_size,
-            total_pages=total_pages,
+            total_pages=total_pages
         )
+
 
     async def get_farmer_profile(self, farmer_id: uuid.UUID) -> Farmer:
         return await self.fetch_farmer_with_relations(farmer_id)
