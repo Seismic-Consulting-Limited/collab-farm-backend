@@ -9,6 +9,7 @@ from app.routers.package_route import router as packages_router
 from app.routers.farmer_route import router as farmer_router
 from app.routers.dashboard_route import router as dashboard_router
 from app.routers.investment_route import router as investment_router
+from app.routers.disbursement_route import router as disbursement_router
 # from app.routers.walletRoute import router as wallet_router
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -48,5 +49,6 @@ app.include_router(onboarding_router, prefix="/onboard")
 app.include_router(packages_router)
 app.include_router(farmer_router)
 app.include_router(investment_router)
+app.include_router(disbursement_router)
 # app.include_router(wallet_router)
 
