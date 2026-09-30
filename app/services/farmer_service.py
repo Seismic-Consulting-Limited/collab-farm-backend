@@ -181,7 +181,8 @@ class FarmerService:
         gender: Gender,
         photo: Optional[UploadFile] = None,
         additional_info: Optional[str] = None,
-        wrs_status: WRSStatus = WRSStatus.NOT_VERIFIED,
+        # i am automatically verifying farmers from here
+        wrs_status: WRSStatus = WRSStatus.VERIFIED,
         farms: Optional[List[FarmCreate]] = None,
     ) -> Farmer:
         if user.role != UserRole.COOPERATIVE:
