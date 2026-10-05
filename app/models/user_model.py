@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 from app.models.farmer_model import Farmer
+from datetime import datetime, timedelta, timezone
 
 if TYPE_CHECKING:
     from app.models.profile_model import CooperativeProfile, GroupProfile, IndividualProfile
@@ -58,11 +59,14 @@ class User(SQLAlchemyBaseUserTableUUID, Base, TimestampMixin):
         SQLEnum(UserRole, native_enum=False),
         nullable=False,
     )
-    
+
     email_otp: Mapped[Optional[str]] = mapped_column(
         String(10), nullable=True, default=None
     )
-    
+
+    email_otp_expires_at = (datetime.now(
+        timezone.utc) + timedelta(minutes=15)).replace(tzinfo=None)
+
 # investor type is now at profile update no longer here
     investor_type: Mapped[Optional[InvestorType]] = mapped_column(
         SQLEnum(InvestorType, native_enum=False),

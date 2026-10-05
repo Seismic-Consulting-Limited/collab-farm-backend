@@ -147,7 +147,8 @@ class AuthService:
 
         # Validate OTP expiration
         now = datetime.now(timezone.utc)
-        if user.email_otp_expires_at and user.email_otp_expires_at < now:
+        # Highlight: added .replace(tzinfo=timezone.utc) to fix the comparison
+        if user.email_otp_expires_at and user.email_otp_expires_at.replace(tzinfo=timezone.utc) < now:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Verification OTP has expired. Please request a new one.",
