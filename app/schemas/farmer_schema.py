@@ -14,7 +14,6 @@ class WRSStatus(str, Enum):
     VERIFIED = "VERIFIED"
     NOT_VERIFIED = "NOT_VERIFIED"
 
-
 class FarmStatus(str, Enum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"

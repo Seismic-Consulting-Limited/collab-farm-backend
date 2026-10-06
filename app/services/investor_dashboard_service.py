@@ -3,10 +3,10 @@ from typing import List, Optional
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
+from fastapi import HTTPException, status
 from app.models.investment_model import Investment, InvestmentStatus
 from app.models.package_model import Package
-from app.models.user_model import User
+from app.models.user_model import User, UserRole
 from app.models.wallet_model import Wallet
 from app.schemas.investor_dashboard_schema import (
     FarmingCategoryAllocationItem,
@@ -86,6 +86,12 @@ class InvestorDashboardService:
         return full_name or "Investor", first_name or "Investor"
 
     async def get_dashboard_data(self, investor_id: uuid.UUID) -> InvestorDashboardResponse:
+        
+        if User.role != UserRole.INVESTOR:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Dashboard metrics are only available for Investor accounts.",
+                    )
         # --- 0. Investor Name ---
         investor_name, first_name = await self._get_investor_names(investor_id)
 
