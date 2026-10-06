@@ -8,7 +8,7 @@ from app.models.base import Base
 
 class TransactionType(str, enum.Enum):
     DEPOSIT = "Deposit"
-    ALLOCATION = "Allocation"
+    INVESTMENT = "Investment"
     DISBURSEMENT = "Disbursement"
     RETURN = "Return"
     WITHDRAWAL = "Withdrawal"
@@ -19,7 +19,7 @@ class TransactionStatus(str, enum.Enum):
     COMPLETED = "Completed"
     ACTIVE = "Active"
     FAILED = "Failed"
-
+    SUCCESS = "Success"
 
 class Wallet(Base):
     __tablename__ = "wallets"

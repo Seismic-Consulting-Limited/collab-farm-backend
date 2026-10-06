@@ -113,7 +113,7 @@ class PackageFarmer(Base, TimestampMixin):
     payback_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     status: Mapped[FarmerPackageStatus] = mapped_column(
         SQLEnum(FarmerPackageStatus, native_enum=False),
-        default=FarmerPackageStatus.PENDING,
+        default=FarmerPackageStatus.ACTIVE,
         nullable=False,
     )
 

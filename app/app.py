@@ -13,6 +13,7 @@ from app.routers.disbursement_route import router as disbursement_router
 from app.routers.chatbot_route import router as chatbot_router
 from app.routers.wallet_route import router as wallet_router
 from app.routers.investor_dashboard_route import router as investor_dashboard_router
+from app.routers.investors_investment_route import router as investors_router
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -55,4 +56,5 @@ app.include_router(investment_router)
 app.include_router(disbursement_router)
 app.include_router(chatbot_router)
 app.include_router(wallet_router)
+app.include_router(investors_router)
 
