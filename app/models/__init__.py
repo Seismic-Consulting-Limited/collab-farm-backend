@@ -1,6 +1,6 @@
 from app.models.base import Base
 from app.models.farmer_model import Farmer
-from app.models.investment_model import Investment
+from app.models.cooperative_investment_model import Investment
 from app.models.package_model import (
     FarmerPackageStatus,
     Package,

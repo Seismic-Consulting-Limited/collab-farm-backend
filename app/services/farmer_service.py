@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.farmer_model import Farm, Farmer, FarmStatus, Gender, WRSStatus
-from app.models.investment_model import Investment, InvestmentStatus
+from app.models.cooperative_investment_model import Investment, InvestmentStatus
 from app.models.package_model import PackageFarmer
 from app.models.user_model import User, UserRole
 from app.schemas.farmer_schema import (

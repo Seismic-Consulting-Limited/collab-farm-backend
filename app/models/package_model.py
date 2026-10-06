@@ -9,7 +9,7 @@ from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.farmer_model import Farmer
-    from app.models.investment_model import Investment
+    from app.models.cooperative_investment_model import Investment
     from app.models.user_model import User
     from app.models.disbursement_model import Disbursement
 

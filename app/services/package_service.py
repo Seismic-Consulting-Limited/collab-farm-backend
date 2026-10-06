@@ -4,7 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from app.models.investment_model import Investment
+from app.models.cooperative_investment_model import Investment
 from app.models.package_model import (
     FarmerPackageStatus,
     Package,

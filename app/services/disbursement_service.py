@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import extract, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.investment_model import Investment
+from app.models.cooperative_investment_model import Investment
 from app.models.package_model import Package, PackageCategory, PackageFarmer, PackageStatus
 from app.schemas.disbursement_schema import (
     DisbursementDetailResponse,

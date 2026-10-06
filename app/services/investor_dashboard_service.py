@@ -4,7 +4,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
-from app.models.investment_model import Investment, InvestmentStatus
+
+from app.models.cooperative_investment_model import Investment, InvestmentStatus
 from app.models.package_model import Package
 from app.models.user_model import User, UserRole
 from app.models.wallet_model import Wallet
@@ -45,40 +46,36 @@ class InvestorDashboardService:
                 return val.value if hasattr(val, "value") else str(val)
         return "General"
 
-    async def _get_investor_names(self, investor_id: uuid.UUID):
-        """Defensively extract full_name and first_name for the investor."""
-        user_stmt = select(User).where(User.id == investor_id)
-        user_res = await self.db.execute(user_stmt)
-        user = user_res.unique().scalar_one_or_none()
-
-        full_name = "Investor"
-        first_name = "Investor"
-
-        if user:
-            full_name = (
-                getattr(user, "full_name", None)
-                or getattr(user, "name", None)
-                or (
-                    f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip()
-                    if getattr(user, "first_name", None)
-                    else None
+    def _extract_investor_names(self, user: User):
+        """Defensively extract full_name and first_name from User or attached profiles."""
+        full_name = (
+            getattr(user, "company_name", None)
+            or getattr(user, "full_name", None)
+            or getattr(user, "name", None)
+            or (
+                f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip(
                 )
+                if getattr(user, "first_name", None)
+                else None
             )
+        )
 
-            first_name = getattr(user, "first_name", None)
+        first_name = getattr(user, "first_name", None)
 
-            profile = getattr(user, "investor_profile", None) or getattr(user, "profile", None)
-            if profile and not full_name:
-                full_name = (
-                    getattr(profile, "full_name", None)
-                    or getattr(profile, "name", None)
-                    or getattr(profile, "first_name", None)
-                )
-            if profile and not first_name:
-                first_name = getattr(profile, "first_name", None)
+        profile = getattr(user, "investor_profile",
+                          None) or getattr(user, "profile", None)
+        if profile and not full_name:
+            full_name = (
+                getattr(profile, "company_name", None)
+                or getattr(profile, "full_name", None)
+                or getattr(profile, "name", None)
+                or getattr(profile, "first_name", None)
+            )
+        if profile and not first_name:
+            first_name = getattr(profile, "first_name", None)
 
-            if not full_name and getattr(user, "email", None):
-                full_name = user.email.split("@")[0].capitalize()
+        if not full_name and getattr(user, "email", None):
+            full_name = user.email.split("@")[0].capitalize()
 
         if full_name and not first_name:
             first_name = full_name.split()[0]
@@ -86,14 +83,27 @@ class InvestorDashboardService:
         return full_name or "Investor", first_name or "Investor"
 
     async def get_dashboard_data(self, investor_id: uuid.UUID) -> InvestorDashboardResponse:
-        
-        if User.role != UserRole.INVESTOR:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Dashboard metrics are only available for Investor accounts.",
-                    )
-        # --- 0. Investor Name ---
-        investor_name, first_name = await self._get_investor_names(investor_id)
+        # --- 0. Fetch Investor & Verify Role ---
+        user_stmt = select(User).where(User.id == investor_id)
+        user_res = await self.db.execute(user_stmt)
+        user = user_res.unique().scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User account not found.",
+            )
+
+        # Handle Enum or string comparison for roles safely
+        user_role_str = user.role.value if hasattr(
+            user.role, "value") else str(user.role)
+        if user_role_str.upper() != "INVESTOR":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Dashboard metrics are only available for Investor accounts.",
+            )
+
+        investor_name, first_name = self._extract_investor_names(user)
 
         # --- 1. Wallet Metrics ---
         wallet_stmt = select(Wallet).where(Wallet.user_id == investor_id)
@@ -102,10 +112,12 @@ class InvestorDashboardService:
 
         if wallet:
             available_balance = float(
-                getattr(wallet, "available_balance", getattr(wallet, "balance", getattr(wallet, "amount", 0.0))) or 0.0
+                getattr(wallet, "available_balance", getattr(
+                    wallet, "balance", getattr(wallet, "amount", 0.0))) or 0.0
             )
             locked_funds = float(
-                getattr(wallet, "locked_balance", getattr(wallet, "locked_funds", 0.0)) or 0.0
+                getattr(wallet, "locked_balance", getattr(
+                    wallet, "locked_funds", 0.0)) or 0.0
             )
         else:
             available_balance = 0.0
@@ -114,7 +126,8 @@ class InvestorDashboardService:
         # --- 2. Investment Metrics (Disbursed & Overdue Count) ---
         disbursed_stmt = select(func.coalesce(func.sum(Investment.amount), 0.0)).where(
             Investment.investor_id == investor_id,
-            Investment.status.in_([InvestmentStatus.ACTIVE, InvestmentStatus.REPAID, InvestmentStatus.OVERDUE]),
+            Investment.status.in_(
+                [InvestmentStatus.ACTIVE, InvestmentStatus.REPAID, InvestmentStatus.OVERDUE]),
         )
         disbursed_funds = float((await self.db.execute(disbursed_stmt)).scalar() or 0.0)
 
@@ -136,7 +149,8 @@ class InvestorDashboardService:
             select(Investment)
             .options(
                 selectinload(Investment.package),
-                selectinload(Investment.package).selectinload(Package.cooperative).selectinload(User.cooperative_profile),
+                selectinload(Investment.package).selectinload(
+                    Package.cooperative).selectinload(User.cooperative_profile),
             )
             .where(
                 Investment.investor_id == investor_id,
@@ -167,7 +181,8 @@ class InvestorDashboardService:
             .options(selectinload(Investment.package))
             .where(
                 Investment.investor_id == investor_id,
-                Investment.status.in_([InvestmentStatus.ACTIVE, InvestmentStatus.OVERDUE]),
+                Investment.status.in_(
+                    [InvestmentStatus.ACTIVE, InvestmentStatus.OVERDUE]),
             )
         )
         active_inv_res = await self.db.execute(active_inv_stmt)
@@ -176,7 +191,8 @@ class InvestorDashboardService:
         category_totals = {}
         for inv in active_investments:
             cat = self._get_farming_category(inv.package)
-            category_totals[cat] = category_totals.get(cat, 0.0) + float(inv.amount)
+            category_totals[cat] = category_totals.get(
+                cat, 0.0) + float(inv.amount)
 
         total_portfolio_value = sum(category_totals.values())
         category_breakdown: List[FarmingCategoryAllocationItem] = []
@@ -202,7 +218,8 @@ class InvestorDashboardService:
             select(Investment)
             .options(
                 selectinload(Investment.package),
-                selectinload(Investment.package).selectinload(Package.cooperative).selectinload(User.cooperative_profile),
+                selectinload(Investment.package).selectinload(
+                    Package.cooperative).selectinload(User.cooperative_profile),
             )
             .where(Investment.investor_id == investor_id)
             .order_by(Investment.created_at.desc())
@@ -215,10 +232,13 @@ class InvestorDashboardService:
         recent_activities = []
 
         for inv in recent_inv_list:
-            roi_pct = float(inv.package.roi_percentage) if inv.package and hasattr(inv.package, "roi_percentage") else 0.0
-            expected_returns = float(inv.amount) + (float(inv.amount) * (roi_pct / 100))
+            roi_pct = float(inv.package.roi_percentage) if inv.package and hasattr(
+                inv.package, "roi_percentage") else 0.0
+            expected_returns = float(inv.amount) + \
+                (float(inv.amount) * (roi_pct / 100))
             pkg_title = inv.package.title if inv.package else "Investment Package"
-            status_str = inv.status.value if hasattr(inv.status, "value") else str(inv.status)
+            status_str = inv.status.value if hasattr(
+                inv.status, "value") else str(inv.status)
 
             recent_investments.append(
                 RecentInvestmentItem(
@@ -246,9 +266,11 @@ class InvestorDashboardService:
             recent_activities.append(
                 RecentActivityItem(
                     id=inv.id,
-                    title=activity_title_map.get(status_str.upper(), "Investment Update"),
+                    title=activity_title_map.get(
+                        status_str.upper(), "Investment Update"),
                     description=pkg_title,
-                    timestamp=getattr(inv, "updated_at", None) or inv.created_at,
+                    timestamp=getattr(inv, "updated_at",
+                                      None) or inv.created_at,
                     activity_type=status_str.lower(),
                 )
             )

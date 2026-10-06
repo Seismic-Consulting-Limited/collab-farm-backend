@@ -19,7 +19,7 @@ from app.schemas.cooperative_dashboard_schema import (
     MonthlyRoiPoint,
     RecentFarmerItem,
 )
-from app.models.investment_model import Investment
+from app.models.cooperative_investment_model import Investment
 
 
 class DashboardService:

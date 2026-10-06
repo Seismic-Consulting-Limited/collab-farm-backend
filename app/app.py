@@ -8,12 +8,12 @@ from app.routers.auth_route import router as auth_router
 from app.routers.package_route import router as packages_router
 from app.routers.farmer_route import router as farmer_router
 from app.routers.cooperative_dashboard_route import router as cooperative_dashboard_router
-from app.routers.investment_route import router as investment_router
+from app.routers.cooperative_investment_route import router as cooperative_investment_router
 from app.routers.disbursement_route import router as disbursement_router
 from app.routers.chatbot_route import router as chatbot_router
 from app.routers.wallet_route import router as wallet_router
 from app.routers.investor_dashboard_route import router as investor_dashboard_router
-from app.routers.investors_investment_route import router as investors_router
+from app.routers.investors_investment_route import router as investors_investment_router
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -47,14 +47,13 @@ app.include_router(
     prefix="/auth/google",
     tags=["Google Authentication"]
 )
-app.include_router(cooperative_dashboard_router)
-app.include_router(investor_dashboard_router)
 app.include_router(onboarding_router, prefix="/onboard")
+app.include_router(cooperative_dashboard_router)
 app.include_router(packages_router)
 app.include_router(farmer_router)
-app.include_router(investment_router)
+app.include_router(cooperative_investment_router)
 app.include_router(disbursement_router)
-app.include_router(chatbot_router)
+app.include_router(investor_dashboard_router)
 app.include_router(wallet_router)
-app.include_router(investors_router)
-
+app.include_router(investors_investment_router)
+app.include_router(chatbot_router)
