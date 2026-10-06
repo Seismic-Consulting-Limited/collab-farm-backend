@@ -10,7 +10,7 @@ from app.models.farmer_model import Farmer, Farm, WRSStatus
 from app.models.package_model import Package, PackageStatus
 from app.models.profile_model import CooperativeProfile
 from app.models.user_model import User, UserRole
-from app.schemas.dashboard_schema import (
+from app.schemas.cooperative_dashboard_schema import (
     CooperativeDashboardResponse,
     CropTypeBreakdown,
     DashboardKpis,

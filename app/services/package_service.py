@@ -200,9 +200,9 @@ class PackageService:
         target_amount = update_data.get("fund_amount", package.fund_amount)
 
         min_amounts = {
-            PackageType.STARTER: 1_000_000.0,
-            PackageType.GROWTH: 3_000_000.0,
-            PackageType.COMMERCIAL: 5_000_000.0,
+            PackageType.STARTER: 100.0,
+            PackageType.GROWTH: 300.0,
+            PackageType.COMMERCIAL: 500.0,
         }
         min_required = min_amounts.get(target_type, 0.0)
         if target_amount < min_required:
