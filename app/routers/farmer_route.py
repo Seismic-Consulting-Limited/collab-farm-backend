@@ -11,10 +11,11 @@ from fastapi import (
     UploadFile,
     status,
 )
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_async_session
-from app.models.farmer_model import Gender, WRSStatus
+from app.models.farmer_model import FarmingCategory, Gender, WRSStatus
 from app.models.user_model import User, UserRole
 from app.schemas.farmer_schema import (
     FarmCreate,
@@ -36,11 +37,14 @@ async def add_farmer(
     nin: str = Form(...),
     phone_number: str = Form(...),
     gender: Gender = Form(...),
-    farming_category: Optional[str] = Form(None),
+    farming_category: Optional[FarmingCategory] = Form(None),
     additional_info: Optional[str] = Form(None),
     wrs_status: WRSStatus = Form(WRSStatus.NOT_VERIFIED),
     photo: Optional[UploadFile] = File(None),
-    farms_json: Optional[str] = Form(None),
+    farms_json: Optional[str] = Form(
+        None,
+        description='JSON string array of farms, e.g. [{"name":"Farm 1","location":"Loc","size_in_hectares":10,"farming_category":"crop_farming","status":"ACTIVE"}]',
+    ),
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
@@ -50,6 +54,7 @@ async def add_farmer(
         try:
             raw_farms = json.loads(farms_json)
 
+            # Handle double-encoded JSON strings from form-data payloads
             if isinstance(raw_farms, str):
                 raw_farms = json.loads(raw_farms)
 
@@ -61,10 +66,10 @@ async def add_farmer(
                     parsed_farms.append(FarmCreate(**item))
 
             farms = parsed_farms
-        except Exception as e:
+        except (json.JSONDecodeError, ValidationError, TypeError) as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid JSON format for farms: {str(e)}",
+                detail=f"Invalid JSON format or schema for farms array: {str(e)}",
             )
 
     return await FarmerService(db).add_farmer(
@@ -84,7 +89,7 @@ async def add_farmer(
 @router.get("", response_model=PaginatedFarmerResponse)
 async def list_farmers(
     search: Optional[str] = Query(None),
-    farming_category: Optional[str] = Query(None),
+    farming_category: Optional[FarmingCategory] = Query(None),
     wrs_status: Optional[WRSStatus] = Query(None),
     cooperative_id: Optional[uuid.UUID] = Query(None),
     page: int = Query(1, ge=1),
@@ -125,8 +130,7 @@ async def get_farmer_directory(
     db: AsyncSession = Depends(get_async_session),
 ):
     cooperative_id = (
-        user.id if getattr(
-            user, "role", None) == UserRole.COOPERATIVE else None
+        user.id if getattr(user, "role", None) == UserRole.COOPERATIVE else None
     )
 
     return await FarmerService(db).get_directory(
@@ -136,6 +140,18 @@ async def get_farmer_directory(
         status_filter=status_filter,
         page=page,
         page_size=page_size,
+    )
+
+
+@router.patch("/farms/{farm_id}/status", response_model=FarmRead)
+async def update_farm_status(
+    farm_id: uuid.UUID,
+    status_update: FarmStatusUpdate,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    return await FarmerService(db).update_farm_status(
+        cooperative_id=user.id, farm_id=farm_id, status_update=status_update
     )
 
 
@@ -155,7 +171,7 @@ async def update_farmer(
     nin: Optional[str] = Form(None),
     phone_number: Optional[str] = Form(None),
     gender: Optional[Gender] = Form(None),
-    farming_category: Optional[str] = Form(None),
+    farming_category: Optional[FarmingCategory] = Form(None),
     additional_info: Optional[str] = Form(None),
     wrs_status: Optional[WRSStatus] = Form(None),
     photo: Optional[UploadFile] = File(None),
@@ -198,18 +214,6 @@ async def add_farm_to_farmer(
 ):
     return await FarmerService(db).add_farm_to_farmer(
         cooperative_id=user.id, farmer_id=farmer_id, farm_data=farm_data
-    )
-
-
-@router.patch("/farms/{farm_id}/status", response_model=FarmRead)
-async def update_farm_status(
-    farm_id: uuid.UUID,
-    status_update: FarmStatusUpdate,
-    user: User = Depends(current_active_user),
-    db: AsyncSession = Depends(get_async_session),
-):
-    return await FarmerService(db).update_farm_status(
-        cooperative_id=user.id, farm_id=farm_id, status_update=status_update
     )
 
 

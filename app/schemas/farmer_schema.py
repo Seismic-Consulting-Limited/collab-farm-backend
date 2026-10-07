@@ -14,9 +14,17 @@ class WRSStatus(str, Enum):
     VERIFIED = "VERIFIED"
     NOT_VERIFIED = "NOT_VERIFIED"
 
+
 class FarmStatus(str, Enum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
+
+
+class FarmingCategory(str, Enum):
+    CROP_FARMING = "crop_farming"
+    FISHERY = "fishery"
+    MIXED_FARMING = "mixed_farming"
+    POULTRY = "poultry"
 
 
 class CooperativeSummary(BaseModel):
@@ -47,10 +55,11 @@ class CooperativeSummary(BaseModel):
 class FarmCreate(BaseModel):
     name: str = Field(..., min_length=2, description="Name of the farm")
     location: str = Field(..., description="Location of the farm")
-    size_in_hectares: float = Field(..., gt=0,
-                                    description="Size of farm in hectares")
-    farming_category: str = Field(...,
-                                  description="e.g. Crop Farming, Livestock, Mixed")
+    size_in_hectares: float = Field(..., gt=0, description="Size of farm in hectares")
+    farming_category: Optional[FarmingCategory] = Field(
+        None,
+        description="Farming category: crop_farming, fishery, mixed_farming, poultry",
+    )
     status: FarmStatus = FarmStatus.ACTIVE
 
     @field_validator("status", mode="before")
@@ -60,12 +69,19 @@ class FarmCreate(BaseModel):
             return value.strip().upper()
         return value
 
+    @field_validator("farming_category", mode="before")
+    @classmethod
+    def normalize_category(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip().lower().replace(" ", "_")
+        return value
+
 
 class FarmUpdate(BaseModel):
     name: Optional[str] = None
     location: Optional[str] = None
     size_in_hectares: Optional[float] = Field(None, gt=0)
-    farming_category: Optional[str] = None
+    farming_category: Optional[FarmingCategory] = None
     status: Optional[FarmStatus] = None
 
     @field_validator("status", mode="before")
@@ -73,6 +89,13 @@ class FarmUpdate(BaseModel):
     def normalize_status(cls, value: Any) -> Any:
         if isinstance(value, str):
             return value.strip().upper()
+        return value
+
+    @field_validator("farming_category", mode="before")
+    @classmethod
+    def normalize_category(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip().lower().replace(" ", "_")
         return value
 
 
@@ -93,7 +116,7 @@ class FarmRead(BaseModel):
     name: str
     location: str
     size_in_hectares: float
-    farming_category: str
+    farming_category: Optional[FarmingCategory] = None
     status: FarmStatus
     created_at: datetime
     updated_at: datetime
@@ -107,12 +130,12 @@ FarmResponse = FarmRead
 
 class FarmerCreate(BaseModel):
     full_name: str = Field(..., min_length=2)
-    nin: str = Field(...,
-                     description="11-digit National Identification Number")
+    nin: str = Field(..., description="11-digit National Identification Number")
     phone_number: str
     gender: Gender
-    farming_category: Optional[str] = Field(
-        None, description="e.g. Crop Farming, Livestock, Mixed")
+    farming_category: Optional[FarmingCategory] = Field(
+        None, description="Primary farming category"
+    )
     wrs_status: WRSStatus = WRSStatus.NOT_VERIFIED
     additional_info: Optional[str] = None
     farms: Optional[list[FarmCreate]] = Field(default_factory=list)
@@ -138,13 +161,20 @@ class FarmerCreate(BaseModel):
             return value.strip().upper()
         return value
 
+    @field_validator("farming_category", mode="before")
+    @classmethod
+    def normalize_category(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip().lower().replace(" ", "_")
+        return value
+
 
 class FarmerUpdate(BaseModel):
     full_name: Optional[str] = None
     nin: Optional[str] = None
     phone_number: Optional[str] = None
     gender: Optional[Gender] = None
-    farming_category: Optional[str] = None
+    farming_category: Optional[FarmingCategory] = None
     additional_info: Optional[str] = None
     wrs_status: Optional[WRSStatus] = None
 
@@ -162,6 +192,13 @@ class FarmerUpdate(BaseModel):
             return value.strip().upper()
         return value
 
+    @field_validator("farming_category", mode="before")
+    @classmethod
+    def normalize_category(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip().lower().replace(" ", "_")
+        return value
+
 
 class FarmerRead(BaseModel):
     id: uuid.UUID
@@ -170,7 +207,7 @@ class FarmerRead(BaseModel):
     nin: str
     phone_number: str
     gender: Gender
-    farming_category: Optional[str] = None
+    farming_category: Optional[FarmingCategory] = None
     photo: Optional[str] = None
     additional_info: Optional[str] = None
     wrs_status: WRSStatus
@@ -202,7 +239,7 @@ class FarmerDirectoryItem(BaseModel):
     id: uuid.UUID
     full_name: str
     photo: Optional[str] = None
-    crop_type: Optional[str] = Field(default="No Farms")
+    farming_category: Optional[str] = Field(default="No Farms")
     phone_number: str
     date_added: Optional[Union[str, datetime]] = None
     status: str

@@ -1,12 +1,12 @@
 import math
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Union
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import cast, func, or_, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.farmer_model import Farm, Farmer, FarmStatus, Gender, WRSStatus
+from app.models.farmer_model import Farm, Farmer, FarmingCategory, FarmStatus, Gender, WRSStatus
 from app.models.cooperative_investment_model import Investment, InvestmentStatus
 from app.models.package_model import PackageFarmer
 from app.models.user_model import User, UserRole
@@ -71,7 +71,8 @@ class FarmerService:
 
         if cooperative_id:
             base_query = base_query.where(
-                Farmer.cooperative_id == cooperative_id)
+                Farmer.cooperative_id == cooperative_id
+            )
 
         # --- 1. Top Bar Directory Metrics ---
         total_stmt = select(func.count()).select_from(base_query.subquery())
@@ -109,24 +110,34 @@ class FarmerService:
                     Farmer.wrs_status == WRSStatus.NOT_VERIFIED
                 )
 
-        if crop_type and crop_type.lower() != "all":
-            filtered_query = filtered_query.outerjoin(Farmer.farms).where(
+        has_crop_filter = crop_type and crop_type.lower() != "all"
+        has_search_filter = bool(search and search.strip())
+
+        # Safely join farms ONCE if crop or search filters are active
+        if has_crop_filter or has_search_filter:
+            filtered_query = filtered_query.outerjoin(Farmer.farms)
+
+        if has_crop_filter:
+            norm_crop = crop_type.strip().lower().replace(" ", "_")
+            filtered_query = filtered_query.where(
                 or_(
-                    Farmer.farming_category.ilike(f"%{crop_type}%"),
-                    Farm.farming_category.ilike(f"%{crop_type}%"),
+                    cast(Farmer.farming_category, String).ilike(
+                        f"%{norm_crop}%"),
+                    cast(Farm.farming_category, String).ilike(
+                        f"%{norm_crop}%"),
                     Farm.name.ilike(f"%{crop_type}%"),
                 )
             )
 
-        if search and search.strip():
+        if has_search_filter:
             pattern = f"%{search.strip()}%"
-            filtered_query = filtered_query.outerjoin(Farmer.farms).where(
+            filtered_query = filtered_query.where(
                 or_(
                     Farmer.full_name.ilike(pattern),
                     Farmer.nin.ilike(pattern),
                     Farmer.phone_number.ilike(pattern),
-                    Farmer.farming_category.ilike(pattern),
-                    Farm.farming_category.ilike(pattern),
+                    cast(Farmer.farming_category, String).ilike(pattern),
+                    cast(Farm.farming_category, String).ilike(pattern),
                     Farm.name.ilike(pattern),
                 )
             )
@@ -149,26 +160,37 @@ class FarmerService:
         result = await self.db.execute(paginated_query)
         farmers = result.scalars().unique().all()
 
-        items = [
-            FarmerDirectoryItem(
-                id=farmer.id,
-                full_name=farmer.full_name,
-                photo=farmer.photo,
-                crop_type=farmer.farming_category
-                or (
-                    farmer.farms[0].farming_category if farmer.farms else "No Category"
-                ),
-                phone_number=farmer.phone_number,
-                date_added=farmer.date_added,
-                status="Verified"
-                if farmer.wrs_status == WRSStatus.VERIFIED
-                else "Pending",
-            )
-            for farmer in farmers
-        ]
+        items = []
+        for farmer in farmers:
+            raw_cat = None
+            if farmer.farming_category:
+                raw_cat = farmer.farming_category
+            elif farmer.farms and farmer.farms[0].farming_category:
+                raw_cat = farmer.farms[0].farming_category
 
-        total_pages = math.ceil(
-            total_filtered / page_size) if page_size > 0 else 1
+            category_val = "No Category"
+            if raw_cat:
+                str_cat = raw_cat.value if isinstance(
+                    raw_cat, FarmingCategory) else str(raw_cat)
+                category_val = str_cat.replace("_", " ").title()
+
+            items.append(
+                FarmerDirectoryItem(
+                    id=farmer.id,
+                    full_name=farmer.full_name,
+                    photo=farmer.photo,
+                    farming_category=category_val,
+                    phone_number=farmer.phone_number,
+                    date_added=farmer.date_added,
+                    status="Verified"
+                    if farmer.wrs_status == WRSStatus.VERIFIED
+                    else "Pending",
+                )
+            )
+
+        total_pages = (
+            math.ceil(total_filtered / page_size) if page_size > 0 else 1
+        )
 
         return FarmerDirectoryResponse(
             metrics=metrics,
@@ -186,7 +208,7 @@ class FarmerService:
         nin: str,
         phone_number: str,
         gender: Gender,
-        farming_category: Optional[str] = None,
+        farming_category: Optional[Union[FarmingCategory, str]] = None,
         photo: Optional[UploadFile] = None,
         additional_info: Optional[str] = None,
         wrs_status: WRSStatus = WRSStatus.NOT_VERIFIED,
@@ -204,6 +226,16 @@ class FarmerService:
                 detail="NIN must consist of exactly 11 numeric digits.",
             )
 
+        if isinstance(farming_category, str):
+            clean_cat = farming_category.strip().lower().replace(" ", "_")
+            try:
+                farming_category = FarmingCategory(clean_cat)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid farming category: '{farming_category}'",
+                )
+
         photo_url = None
         if photo:
             photo_res = await upload_kyc_document(
@@ -211,75 +243,122 @@ class FarmerService:
             )
             photo_url = photo_res.get("secure_url")
 
+        # Extract enum string values safely
+        cat_val = (
+            farming_category.value
+            if hasattr(farming_category, "value")
+            else farming_category
+        )
+        gender_val = gender.value if hasattr(gender, "value") else gender
+        wrs_val = wrs_status.value if hasattr(wrs_status, "value") else wrs_status
+
         farmer = Farmer(
             cooperative_id=user.id,
             full_name=full_name,
             nin=nin,
             phone_number=phone_number,
-            gender=gender,
-            farming_category=farming_category,
+            gender=gender_val,
+            farming_category=cat_val,
             photo=photo_url,
             additional_info=additional_info,
-            wrs_status=wrs_status,
+            wrs_status=wrs_val,
         )
         self.db.add(farmer)
         await self.db.flush()
 
+        # Process attached farms only if provided
         if farms:
             for farm_item in farms:
+                farm_cat_val = (
+                    farm_item.farming_category.value
+                    if hasattr(farm_item.farming_category, "value")
+                    else farm_item.farming_category
+                )
+                farm_status_val = (
+                    farm_item.status.value
+                    if hasattr(farm_item.status, "value")
+                    else farm_item.status
+                )
+
                 farm = Farm(
                     farmer_id=farmer.id,
                     name=farm_item.name,
                     location=farm_item.location,
                     size_in_hectares=farm_item.size_in_hectares,
-                    farming_category=farm_item.farming_category,
-                    status=farm_item.status,
+                    farming_category=farm_cat_val,
+                    status=farm_status_val,
                 )
-                self.db.add(farm)
+                self.db.add(farm)  # Must be indented inside the loop
 
         await self.db.commit()
         return await self.fetch_farmer_with_relations(farmer.id)
-
+    
+    
     async def list_farmers(
         self,
         search: Optional[str] = None,
-        farming_category: Optional[str] = None,
+        farming_category: Optional[Union[FarmingCategory, str]] = None,
         wrs_status: Optional[WRSStatus] = None,
         cooperative_id: Optional[uuid.UUID] = None,
         page: int = 1,
         page_size: int = 12,
     ) -> PaginatedFarmerResponse:
-        # FIX: Added selectinload here to eagerly load relationship tables before serialization
         base_query = select(Farmer).options(
             selectinload(Farmer.farms),
             selectinload(Farmer.cooperative).selectinload(
                 User.cooperative_profile
-            )
+            ),
         )
 
         if cooperative_id:
-            base_query = base_query.where(Farmer.cooperative_id == cooperative_id)
+            base_query = base_query.where(
+                Farmer.cooperative_id == cooperative_id)
         if wrs_status:
             base_query = base_query.where(Farmer.wrs_status == wrs_status)
-        if farming_category:
-            base_query = base_query.join(Farmer.farms).where(
-                Farm.farming_category.ilike(f"%{farming_category}%")
+
+        has_cat_filter = bool(farming_category)
+        has_search_filter = bool(search and search.strip())
+
+        # Join farms once if filtering by category or searching
+        if has_cat_filter or has_search_filter:
+            base_query = base_query.outerjoin(Farmer.farms)
+
+        if has_cat_filter:
+            cat_str = (
+                farming_category.value
+                if isinstance(farming_category, FarmingCategory)
+                else str(farming_category).strip().lower().replace(" ", "_")
             )
-        if search:
-            pattern = f"%{search.strip()}%"
-            base_query = base_query.outerjoin(Farmer.farms).where(
+            base_query = base_query.where(
                 or_(
-                    Farmer.full_name.ilike(pattern),
-                    Farmer.phone_number.ilike(pattern),
-                    Farmer.nin.ilike(pattern)
+                    cast(Farmer.farming_category, String).ilike(
+                        f"%{cat_str}%"),
+                    cast(Farm.farming_category, String).ilike(f"%{cat_str}%"),
                 )
             )
 
-        count_stmt = select(func.count()).select_from(base_query.distinct().subquery())
+        if has_search_filter:
+            pattern = f"%{search.strip()}%"
+            base_query = base_query.where(
+                or_(
+                    Farmer.full_name.ilike(pattern),
+                    Farmer.phone_number.ilike(pattern),
+                    Farmer.nin.ilike(pattern),
+                )
+            )
+
+        count_stmt = select(func.count()).select_from(
+            base_query.distinct().subquery()
+        )
         total = (await self.db.execute(count_stmt)).scalar() or 0
 
         offset = (page - 1) * page_size
-        query = base_query.distinct().order_by(Farmer.created_at.desc()).offset(offset).limit(page_size)
+        query = (
+            base_query.distinct()
+            .order_by(Farmer.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
         result = await self.db.execute(query)
         farmers = result.scalars().unique().all()
 
@@ -290,9 +369,8 @@ class FarmerService:
             total=total,
             page=page,
             page_size=page_size,
-            total_pages=total_pages
+            total_pages=total_pages,
         )
-
 
     async def get_farmer_profile(self, farmer_id: uuid.UUID) -> Farmer:
         return await self.fetch_farmer_with_relations(farmer_id)
@@ -305,7 +383,7 @@ class FarmerService:
         nin: Optional[str] = None,
         phone_number: Optional[str] = None,
         gender: Optional[Gender] = None,
-        farming_category: Optional[str] = None,
+        farming_category: Optional[Union[FarmingCategory, str]] = None,
         additional_info: Optional[str] = None,
         wrs_status: Optional[WRSStatus] = None,
         photo: Optional[UploadFile] = None,
@@ -335,6 +413,16 @@ class FarmerService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="NIN must consist of exactly 11 numeric digits.",
             )
+
+        if isinstance(farming_category, str):
+            clean_cat = farming_category.strip().lower().replace(" ", "_")
+            try:
+                farming_category = FarmingCategory(clean_cat)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid farming category: '{farming_category}'",
+                )
 
         update_fields = {
             "full_name": full_name,
@@ -399,13 +487,24 @@ class FarmerService:
                 detail="Farmer not found in this cooperative.",
             )
 
+        cat_val = (
+            farm_data.farming_category.value
+            if hasattr(farm_data.farming_category, "value")
+            else farm_data.farming_category
+        )
+        status_val = (
+            farm_data.status.value
+            if hasattr(farm_data.status, "value")
+            else farm_data.status
+        )
+
         new_farm = Farm(
             farmer_id=farmer_id,
             name=farm_data.name,
             location=farm_data.location,
             size_in_hectares=farm_data.size_in_hectares,
-            farming_category=farm_data.farming_category,
-            status=farm_data.status,
+            farming_category=cat_val,
+            status=status_val,
         )
         self.db.add(new_farm)
         await self.db.commit()
