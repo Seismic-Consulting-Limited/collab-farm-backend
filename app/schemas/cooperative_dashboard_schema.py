@@ -17,8 +17,8 @@ class DashboardKpis(BaseModel):
     total_funding_received: KpiCard
 
 
-class CropTypeBreakdown(BaseModel):
-    crop_type: str
+class FarmingCategoryBreakdown(BaseModel):
+    farming_category: str
     count: int
     percentage: float
 
@@ -31,7 +31,7 @@ class MonthlyRoiPoint(BaseModel):
 class RecentFarmerItem(BaseModel):
     id: uuid.UUID
     name: str
-    crop_type: str
+    farming_category: str
     added_at: datetime
     status: str
 
@@ -48,7 +48,8 @@ class CooperativeDashboardResponse(BaseModel):
     cooperative_name: str
     kpis: DashboardKpis
     accumulative_roi: List[MonthlyRoiPoint]
-    farmers_by_crop_type: List[CropTypeBreakdown]
+    farmers_by_farming_category: List[FarmingCategoryBreakdown]
     recent_farmers: List[RecentFarmerItem]
     investment_summary: InvestmentStatusSummary
+
     model_config = ConfigDict(from_attributes=True)

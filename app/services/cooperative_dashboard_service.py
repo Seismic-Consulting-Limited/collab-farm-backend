@@ -5,14 +5,13 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Fix 1: Added Farm here alongside Farmer and WRSStatus
-from app.models.farmer_model import Farmer, Farm, WRSStatus 
+from app.models.farmer_model import Farmer, Farm, WRSStatus
 from app.models.package_model import Package, PackageStatus
 from app.models.profile_model import CooperativeProfile
 from app.models.user_model import User, UserRole
 from app.schemas.cooperative_dashboard_schema import (
     CooperativeDashboardResponse,
-    CropTypeBreakdown,
+    FarmingCategoryBreakdown,
     DashboardKpis,
     InvestmentStatusSummary,
     KpiCard,
@@ -27,7 +26,6 @@ class DashboardService:
         self.db = db
 
     async def get_cooperative_dashboard(self, user: User) -> CooperativeDashboardResponse:
-        # Fix 2: Entire block correctly indented by 8 spaces
         if user.role != UserRole.COOPERATIVE:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -36,7 +34,8 @@ class DashboardService:
 
         coop_profile_res = await self.db.execute(
             select(CooperativeProfile).where(
-                CooperativeProfile.user_id == user.id)
+                CooperativeProfile.user_id == user.id
+            )
         )
         coop_profile = coop_profile_res.scalars().first()
         coop_name = coop_profile.cooperative_name if coop_profile else "Cooperative"
@@ -46,7 +45,8 @@ class DashboardService:
         # 1. Total Farmers
         total_farmers = await self.db.scalar(
             select(func.count(Farmer.id)).where(
-                Farmer.cooperative_id == user.id)
+                Farmer.cooperative_id == user.id
+            )
         ) or 0
 
         farmers_added_30d = await self.db.scalar(
@@ -72,17 +72,17 @@ class DashboardService:
             )
         ) or 0
 
-        # 3. Corrected Farm Hectares Queries (Joining Farmer with Farm)
+        # 3. Farm Hectares Queries
         total_hectares = await self.db.scalar(
             select(func.coalesce(func.sum(Farm.size_in_hectares), 0.0))
-            .select_from(Farmer)  # <-- Tell SQLAlchemy where to start the join
+            .select_from(Farmer)
             .join(Farm, Farmer.id == Farm.farmer_id)
             .where(Farmer.cooperative_id == user.id)
         ) or 0.0
 
         hectares_added_30d = await self.db.scalar(
             select(func.coalesce(func.sum(Farm.size_in_hectares), 0.0))
-            .select_from(Farmer)  # <-- Tell SQLAlchemy where to start the join
+            .select_from(Farmer)
             .join(Farm, Farmer.id == Farm.farmer_id)
             .where(
                 Farmer.cooperative_id == user.id,
@@ -98,26 +98,36 @@ class DashboardService:
         )
         total_funding = total_funding_res.scalar() or 0.0
 
-        # 5. Corrected Crop Breakdowns (Grouping by Farm.farming_category)
-        crop_counts_res = await self.db.execute(
-            select(Farm.farming_category, func.count(Farmer.id))
-            .join(Farm, Farmer.id == Farm.farmer_id)
+        # 5. Farming Category Breakdowns
+        cat_counts_res = await self.db.execute(
+            select(
+                func.coalesce(Farm.farming_category, Farmer.farming_category),
+                func.count(Farmer.id),
+            )
+            .outerjoin(Farm, Farmer.id == Farm.farmer_id)
             .where(Farmer.cooperative_id == user.id)
-            .group_by(Farm.farming_category)
+            .group_by(func.coalesce(Farm.farming_category, Farmer.farming_category))
         )
-        crop_counts = crop_counts_res.all()
+        cat_counts = cat_counts_res.all()
 
-        crop_breakdown: List[CropTypeBreakdown] = []
-        for crop, count in crop_counts:
+        farming_category_breakdown: List[FarmingCategoryBreakdown] = []
+        for cat, count in cat_counts:
             pct = round((count / total_farmers * 100),
                         1) if total_farmers > 0 else 0.0
-            crop_breakdown.append(
-                CropTypeBreakdown(
-                    crop_type=crop or "Others", count=count, percentage=pct
+            raw_cat = cat.value if hasattr(
+                cat, "value") else str(cat or "General")
+            formatted_cat = raw_cat.replace(
+                "_", " ").title() if raw_cat else "General"
+
+            farming_category_breakdown.append(
+                FarmingCategoryBreakdown(
+                    farming_category=formatted_cat,
+                    count=count,
+                    percentage=pct,
                 )
             )
 
-        # 6. Recent Farmers (Safely fetching recent profiles)
+        # 6. Recent Farmers
         recent_farmers_res = await self.db.execute(
             select(Farmer)
             .where(Farmer.cooperative_id == user.id)
@@ -128,17 +138,28 @@ class DashboardService:
 
         recent_farmers = []
         for f in recent_farmer_records:
-            first_farm_res = await self.db.execute(
-                select(Farm.farming_category).where(
-                    Farm.farmer_id == f.id).limit(1)
-            )
-            crop_type = first_farm_res.scalar() or "General"
+            category_val = "General"
+            if f.farming_category:
+                raw_cat = f.farming_category.value if hasattr(
+                    f.farming_category, "value") else str(f.farming_category)
+                category_val = raw_cat.replace("_", " ").title()
+            else:
+                first_farm_res = await self.db.execute(
+                    select(Farm.farming_category).where(
+                        Farm.farmer_id == f.id
+                    ).limit(1)
+                )
+                farm_cat = first_farm_res.scalar()
+                if farm_cat:
+                    raw_cat = farm_cat.value if hasattr(
+                        farm_cat, "value") else str(farm_cat)
+                    category_val = raw_cat.replace("_", " ").title()
 
             recent_farmers.append(
                 RecentFarmerItem(
                     id=f.id,
                     name=f.full_name,
-                    crop_type=crop_type,
+                    farming_category=category_val,
                     added_at=f.created_at,
                     status=f.wrs_status.value if hasattr(
                         f.wrs_status, "value") else str(f.wrs_status),
@@ -193,7 +214,7 @@ class DashboardService:
                 MonthlyRoiPoint(month="Apr '26", roi_percentage=0.0),
                 MonthlyRoiPoint(month="May '26", roi_percentage=0.0),
             ],
-            farmers_by_crop_type=crop_breakdown,
+            farmers_by_farming_category=farming_category_breakdown,
             recent_farmers=recent_farmers,
             investment_summary=inv_summary,
         )
