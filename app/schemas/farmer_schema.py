@@ -9,7 +9,7 @@ class Gender(str, Enum):
     MALE = "MALE"
     FEMALE = "FEMALE"
 
-
+# Warehouse Receipt System(WRS)
 class WRSStatus(str, Enum):
     VERIFIED = "VERIFIED"
     NOT_VERIFIED = "NOT_VERIFIED"
