@@ -57,28 +57,24 @@ def send_verification_email_background(
     email: str, token: str, background_tasks: BackgroundTasks
 ):
     # Route for React frontend
-    verification_link = f"{FRONTEND_URL}/verify-email?token={token}"
+    verification_otp = f"{token}"
 
     print("\n" + "=" * 60)
     print(f"LOCAL TEST - VERIFICATION TOKEN FOR {email}:")
     print(f"Token: {token}")
-    print(f"Frontend Route: {verification_link}")
-    print(f"Direct API Route: {BACKEND_URL}/auth/verify-email?token={token}")
+    print(f"Frontend Route: {verification_otp}")
+    print(f"{token}")
     print("=" * 60 + "\n")
 
     html_content = f"""
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
         <h2>Verify Your Email Address</h2>
-        <p>Thank you for signing up with CollabFarm! Please click the button below to verify your email address and activate your account:</p>
+        <p>Thank you for signing up with CollabFarm! Please use the code below to verify your email:</p>
         
         <p style="margin-top: 20px;">
-            <a href="{verification_link}" style="background-color: #2e7d32; color: #ffffff; padding: 10px 18px; text-decoration: none; border-radius: 4px; display: inline-block;">
-                Verify Email
-            </a>
-        </p>
-
-        <p style="font-size: 12px; color: #777;">
-            Direct Link: <a href="{verification_link}">{verification_link}</a>
+            <h1 style="background-color: #2e7d32; color: #ffffff; padding: 10px 18px; text-decoration: none; border-radius: 4px; display: inline-block;">
+                {verification_otp}
+            </h1>
         </p>
         <p style="font-size: 12px; color: #777;">This link will expire in 24 hours. If you did not create an account, please ignore this email.</p>
     </div>
