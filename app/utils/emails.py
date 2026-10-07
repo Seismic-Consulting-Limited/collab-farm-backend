@@ -113,9 +113,6 @@ def send_reset_email_background(
             </a>
         </p>
         
-        <p style="font-size: 12px; color: #777;">
-            Direct Link: <a href="{reset_link}">{reset_link}</a>
-        </p>
         <p style="font-size: 12px; color: #777;">If you did not make this request, please ignore this email.</p>
     </div>
     """
