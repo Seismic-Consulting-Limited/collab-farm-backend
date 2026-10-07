@@ -32,10 +32,6 @@ class FarmingCategory(str, enum.Enum):
 
 
 class FlexibleEnum(TypeDecorator):
-    """
-    Stores Enum values in the DB as VARCHAR and reads them back case-insensitively.
-    Prevents LookupError when DB rows contain mixed casing (e.g., 'Fishery' vs 'fishery').
-    """
     impl = String
     cache_ok = True
 
