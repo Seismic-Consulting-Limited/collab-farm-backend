@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from fastapi import BackgroundTasks, HTTPException, Request, status
 from fastapi_users.exceptions import UserAlreadyExists, UserNotExists
-from fastapi_users.router.common import ErrorCode
 from pydantic import BaseModel, EmailStr, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -145,14 +144,18 @@ class AuthService:
                 detail="Invalid verification OTP.",
             )
 
-        # Validate OTP expiration
+        # Validate OTP expiration safely (handles naive & aware datetimes)
         now = datetime.now(timezone.utc)
-        # Highlight: added .replace(tzinfo=timezone.utc) to fix the comparison
-        if user.email_otp_expires_at and user.email_otp_expires_at.replace(tzinfo=timezone.utc) < now:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Verification OTP has expired. Please request a new one.",
-            )
+        if user.email_otp_expires_at:
+            expires_at = user.email_otp_expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+            if expires_at < now:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Verification OTP has expired. Please request a new one.",
+                )
 
         # Mark verified & clear OTP
         await self.user_manager.user_db.update(

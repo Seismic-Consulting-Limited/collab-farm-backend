@@ -23,9 +23,13 @@ class UserCreate(schemas.BaseUserCreate):
     role: UserRole
     investor_type: InvestorType | None = None
     verification_status: VerificationStatus = VerificationStatus.NOT_SUBMITTED
+    confirm_password: str = Field(..., description="Confirm Password")
 
     @model_validator(mode="after")
-    def handle_role_defaults(self):
+    def validate_user_create(self):
+        if self.password != self.confirm_password:
+            raise ValueError("Passwords do not match.")
+
         if self.role == UserRole.ADMIN:
             self.verification_status = VerificationStatus.APPROVED
         else:
@@ -35,6 +39,16 @@ class UserCreate(schemas.BaseUserCreate):
             self.investor_type = None
 
         return self
+
+    def create_update_dict(self):
+        data = super().create_update_dict()
+        data.pop("confirm_password", None)
+        return data
+
+    def create_update_dict_superuser(self):
+        data = super().create_update_dict_superuser()
+        data.pop("confirm_password", None)
+        return data
 
 
 class UserUpdate(schemas.BaseUserUpdate):
@@ -61,6 +75,15 @@ class ResetPasswordSchema(BaseModel):
     new_password: str = Field(
         ..., min_length=8, description="Enter New Password"
     )
+    confirm_password: str = Field(
+        ..., min_length=8, description="Confirm New Password"
+    )
+
+    @model_validator(mode="after")
+    def validate_passwords_match(self):
+        if self.new_password != self.confirm_password:
+            raise ValueError("New password and confirm password do not match.")
+        return self
 
 
 class ChangePassword(BaseModel):
@@ -68,6 +91,16 @@ class ChangePassword(BaseModel):
     new_password: str = Field(
         ..., min_length=8, description="Enter New Password"
     )
+    confirm_password: str = Field(
+        ..., min_length=8, description="Confirm New Password"
+    )
+
+    @model_validator(mode="after")
+    def validate_passwords_match(self):
+        if self.new_password != self.confirm_password:
+            raise ValueError("New password and confirm password do not match.")
+        return self
+
 
 class VerifyOTPSchema(BaseModel):
     email: EmailStr

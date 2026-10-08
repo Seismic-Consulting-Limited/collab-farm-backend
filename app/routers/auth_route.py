@@ -4,14 +4,21 @@ from pydantic import EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_async_session
+from app.models.user_model import User
 from app.schemas.user_schema import (
+    ChangePassword,
     ForgotPasswordSchema,
     ResetPasswordSchema,
     UserCreate,
     VerifyOTPSchema,
 )
 from app.services.auth_service import AuthService
-from app.users import UserManager, auth_backend, get_user_manager
+from app.users import (
+    UserManager,
+    auth_backend,
+    current_active_user,
+    get_user_manager,
+)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
