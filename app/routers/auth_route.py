@@ -19,11 +19,17 @@ from app.users import (
     current_active_user,
     get_user_manager,
 )
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+limiter = Limiter(
+    key_func=get_remote_address
+)
 
 @router.post("/login")
+@limiter.limit("5/minute")
 async def login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
