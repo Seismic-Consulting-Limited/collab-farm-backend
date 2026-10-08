@@ -6,7 +6,7 @@ from app.services.chatbot_service import ask_ai
 
 router = APIRouter(
     prefix="/chat",
-    tags=["Chat"]
+    tags=["Chatbot"]
 )
 
 

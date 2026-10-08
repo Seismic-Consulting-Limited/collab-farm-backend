@@ -95,6 +95,7 @@ def send_reset_email_background(
 ):
     reset_link = f"{FRONTEND_URL}/reset-password?token={token}"
 
+# reminder to remove the reset token when frontend page is created
     html_content = f"""
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
         <h2>Password Reset Request</h2>
