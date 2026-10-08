@@ -32,11 +32,6 @@ def send_welcome_email(
         <p>Thank you for joining our platform. We're thrilled to have you onboard.</p>
         <p>You can now explore agricultural investment opportunities and manage your portfolio seamlessly.</p>
         
-        <p style="margin-top: 20px;">
-            <a href="{dashboard_url}" style="background-color: #2e7d32; color: #ffffff; padding: 10px 18px; text-decoration: none; border-radius: 4px; display: inline-block;">
-                Log In to Your Account
-            </a>
-        </p>
         <br/>
         <p>Best regards,<br/><strong>The CollabFarm Team</strong></p>
     </div>
