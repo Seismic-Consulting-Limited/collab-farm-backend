@@ -65,7 +65,7 @@ class PackageInvestorDetail(BaseModel):
     investor_id: uuid.UUID
     amount: float
     invested_at: datetime = Field(..., alias="created_at")
-    payback_due_date: date
+    payback_due_date: Optional[date] = None 
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
