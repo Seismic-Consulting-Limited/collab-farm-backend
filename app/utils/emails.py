@@ -70,7 +70,7 @@ def send_verification_email_background(
                 {verification_otp}
             </h1>
         </p>
-        <p style="font-size: 12px; color: #777;">This link will expire in 24 hours. If you did not create an account, please ignore this email.</p>
+        <p style="font-size: 12px; color: #777;">This link will expire in 6 minutes. If you did not create an account, please ignore this email.</p>
     </div>
     """
 

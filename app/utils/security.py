@@ -12,7 +12,7 @@ load_dotenv()
 
 SECRET = os.getenv("SECRET")
 ALGORITHM = "HS256"
-VERIFICATION_TOKEN_EXPIRE_HOURS = 24
+VERIFICATION_TOKEN_EXPIRE_HOURS = 0.1
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 serializer = URLSafeTimedSerializer(SECRET)
