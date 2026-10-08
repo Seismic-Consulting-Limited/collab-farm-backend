@@ -56,7 +56,6 @@ def send_welcome_email(
 def send_verification_email_background(
     email: str, token: str, background_tasks: BackgroundTasks
 ):
-    # Route for React frontend
     verification_otp = f"{token}"
 
     print("\n" + "=" * 60)

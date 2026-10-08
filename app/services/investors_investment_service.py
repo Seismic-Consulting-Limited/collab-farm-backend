@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
 from app.models.cooperative_investment_model import Investment, InvestmentStatus
 from app.models.package_model import Package
 from app.models.wallet_model import (
@@ -13,7 +14,17 @@ from app.models.wallet_model import (
     TransactionType,
     Wallet,
 )
-from app.schemas.investors_investment_schema import InvestmentCreateRequest, InvestmentResponse, PackageFundingProgress, InvestmentSummaryMetrics, InvestorInvestmentDetailResponse, InvestorInvestmentListItem, InvestorInvestmentsOverviewResponse, YourInvestmentDetails, SettlementInformation
+from app.schemas.investors_investment_schema import (
+    InvestmentCreateRequest,
+    InvestmentResponse,
+    PackageFundingProgress,
+    InvestmentSummaryMetrics,
+    InvestorInvestmentDetailResponse,
+    InvestorInvestmentListItem,
+    InvestorInvestmentsOverviewResponse,
+    YourInvestmentDetails,
+    SettlementInformation,
+)
 
 
 class InvestmentService:
@@ -82,24 +93,45 @@ class InvestmentService:
             )
 
         pkg_status = getattr(package, "status", None)
-        status_str = pkg_status.value if hasattr(pkg_status, "value") else str(pkg_status or "")
+        status_str = pkg_status.value if hasattr(
+            pkg_status, "value") else str(pkg_status or "")
         if status_str.upper() in ["CLOSED", "COMPLETED", "INACTIVE"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="This investment package is currently closed for funding.",
             )
 
-        # --- 3. Update Wallet Balances ---
-        wallet.available_balance = float(wallet.available_balance) - data.amount
+        # --- 3. Check for Active or Pending Investment in THIS Package ---
+        active_statuses = [InvestmentStatus.ACTIVE, InvestmentStatus.PENDING]
+        existing_inv_stmt = select(Investment).where(
+            Investment.investor_id == investor_id,
+            Investment.package_id == data.package_id,
+            Investment.status.in_(active_statuses),
+        )
+        existing_inv_res = await self.db.execute(existing_inv_stmt)
+        existing_investment = existing_inv_res.scalars().first()
+
+        if existing_investment:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "You already have an ongoing investment in this package. "
+                    "You cannot reinvest in the same package until your current investment is completed."
+                ),
+            )
+
+        # --- 4. Update Wallet Balances ---
+        wallet.available_balance = float(
+            wallet.available_balance) - data.amount
         wallet.locked_funds = float(wallet.locked_funds or 0.0) + data.amount
 
-        # --- 4. Extract Package Attributes ---
+        # --- 5. Extract Package Attributes ---
         pkg_title = getattr(package, "title", "Investment Package")
         roi_pct = self._get_package_roi(package)
         expected_returns = data.amount + (data.amount * (roi_pct / 100))
         due_date = self._get_payback_date(package)
 
-        # --- 5. Create Investment Record ---
+        # --- 6. Create Investment Record ---
         new_investment = Investment(
             investor_id=investor_id,
             package_id=package.id,
@@ -115,7 +147,7 @@ class InvestmentService:
         self.db.add(new_investment)
         await self.db.flush()
 
-        # --- 6. Create Transaction History Record ---
+        # --- 7. Create Transaction History Record ---
         unique_ref = f"INV-{str(new_investment.id)[:8]}-{int(datetime.now(timezone.utc).timestamp())}"
 
         transaction = Transaction(
@@ -128,7 +160,7 @@ class InvestmentService:
         )
         self.db.add(transaction)
 
-        # --- 7. Commit Database Operations ---
+        # --- 8. Commit Database Operations ---
         await self.db.commit()
         await self.db.refresh(new_investment)
 
@@ -141,10 +173,11 @@ class InvestmentService:
             roi_percentage=roi_pct,
             expected_returns=expected_returns,
             due_date=due_date,
-            status=new_investment.status.value if hasattr(new_investment.status, "value") else str(new_investment.status),
+            status=new_investment.status.value if hasattr(
+                new_investment.status, "value") else str(new_investment.status),
             created_at=new_investment.created_at,
         )
-    
+
     async def get_investor_investments(
         self,
         investor_id: uuid.UUID,
@@ -163,13 +196,13 @@ class InvestmentService:
 
         # Calculate Summary Metrics
         total_invested = sum(float(inv.amount) for inv in all_investments)
-        
+
         active_investments = sum(
             float(inv.amount)
             for inv in all_investments
             if str(getattr(inv.status, "value", inv.status)).upper() == "ACTIVE"
         )
-        
+
         packages_funded = sum(
             float(inv.amount)
             for inv in all_investments
@@ -181,21 +214,29 @@ class InvestmentService:
 
         for inv in all_investments:
             pkg = inv.package
-            pkg_title = getattr(pkg, "title", "Investment Package") if pkg else "Investment Package"
-            pkg_type = getattr(pkg, "package_type", "Standard") if pkg else "Standard"
-            pkg_type_str = pkg_type.value if hasattr(pkg_type, "value") else str(pkg_type)
+            pkg_title = getattr(
+                pkg, "title", "Investment Package") if pkg else "Investment Package"
+            pkg_type = getattr(pkg, "package_type",
+                               "Standard") if pkg else "Standard"
+            pkg_type_str = pkg_type.value if hasattr(
+                pkg_type, "value") else str(pkg_type)
 
             roi_pct = self._get_package_roi(pkg) if pkg else 0.0
-            expected_settlement = float(inv.amount) + (float(inv.amount) * (roi_pct / 100))
+            expected_settlement = float(
+                inv.amount) + (float(inv.amount) * (roi_pct / 100))
 
-            inv_status = inv.status.value if hasattr(inv.status, "value") else str(inv.status)
+            inv_status = inv.status.value if hasattr(
+                inv.status, "value") else str(inv.status)
             if inv_status.upper() in ["ACTIVE", "PENDING"]:
                 pending_settlement += expected_settlement
 
             # Package funding progress %
-            fund_amount = float(getattr(pkg, "fund_amount", 1.0) or 1.0) if pkg else 1.0
-            amount_raised = float(getattr(pkg, "amount_raised", 0.0) or 0.0) if pkg else 0.0
-            progress_pct = min(round((amount_raised / fund_amount) * 100, 1), 100.0)
+            fund_amount = float(
+                getattr(pkg, "fund_amount", 1.0) or 1.0) if pkg else 1.0
+            amount_raised = float(
+                getattr(pkg, "amount_raised", 0.0) or 0.0) if pkg else 0.0
+            progress_pct = min(
+                round((amount_raised / fund_amount) * 100, 1), 100.0)
 
             # Apply Search & Filter if requested
             if status_filter and status_filter.upper() != "ALL":
@@ -255,8 +296,9 @@ class InvestmentService:
             )
 
         pkg = investment.package
-        pkg_title = getattr(pkg, "title", "Investment Package") if pkg else "Investment Package"
-        
+        pkg_title = getattr(
+            pkg, "title", "Investment Package") if pkg else "Investment Package"
+
         # Transaction reference lookup
         tx_stmt = select(Transaction).where(
             Transaction.description.ilike(f"%{pkg_title}%")
@@ -266,15 +308,20 @@ class InvestmentService:
         tx_ref = tx.reference if tx else f"TX-{str(investment.id)[:8].upper()}"
 
         # Package Metrics
-        target_amount = float(getattr(pkg, "fund_amount", 0.0) or 0.0) if pkg else 0.0
-        amount_raised = float(getattr(pkg, "amount_raised", 0.0) or 0.0) if pkg else 0.0
-        progress_pct = min(round((amount_raised / target_amount) * 100, 1), 100.0) if target_amount > 0 else 0.0
+        target_amount = float(
+            getattr(pkg, "fund_amount", 0.0) or 0.0) if pkg else 0.0
+        amount_raised = float(
+            getattr(pkg, "amount_raised", 0.0) or 0.0) if pkg else 0.0
+        progress_pct = min(round((amount_raised / target_amount)
+                           * 100, 1), 100.0) if target_amount > 0 else 0.0
 
         assigned_farmers = getattr(pkg, "assigned_farmers", []) if pkg else []
-        farmers_count = len(assigned_farmers) if isinstance(assigned_farmers, list) else 0
+        farmers_count = len(assigned_farmers) if isinstance(
+            assigned_farmers, list) else 0
 
         roi_pct = self._get_package_roi(pkg) if pkg else 0.0
-        expected_settlement = float(investment.amount) + (float(investment.amount) * (roi_pct / 100))
+        expected_settlement = float(
+            investment.amount) + (float(investment.amount) * (roi_pct / 100))
         due_date = self._get_payback_date(pkg) if pkg else None
 
         inv_status_str = (
@@ -289,7 +336,8 @@ class InvestmentService:
             package_title=pkg_title,
             package_code=f"INV-{str(investment.id)[:4].upper()}",
             category=self._get_farming_category(pkg),
-            invested_date_str=investment.created_at.strftime("%d %b %Y, %I:%M %p"),
+            invested_date_str=investment.created_at.strftime(
+                "%d %b %Y, %I:%M %p"),
             investment_details=YourInvestmentDetails(
                 amount_invested=float(investment.amount),
                 investment_id_code=f"#{float(investment.amount):,.0f}",
