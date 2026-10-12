@@ -17,38 +17,24 @@ from app.users import current_active_user
 router = APIRouter(prefix="/investments", tags=["Investors Investments"])
 
 
-@router.post(
-    "",
-    response_model=InvestmentResponse,
-    status_code=status.HTTP_201_CREATED,
-)
+@router.post("", response_model=InvestmentResponse, status_code=status.HTTP_201_CREATED)
 async def create_investment(
     payload: InvestmentCreateRequest,
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-
-    # Deducts funds from investor wallet and creates a new investment entry.
-    # Rejects the request if the investor already has an active or pending investment in the same package.
-    return await InvestmentService(db).process_investment(
-        investor_id=user.id, data=payload
-    )
+    return await InvestmentService(db).process_investment(user=user, data=payload)
 
 
 @router.get("", response_model=InvestorInvestmentsOverviewResponse)
 async def get_my_investments(
-    status: Optional[str] = Query(
-        None, description="Filter by status e.g. ACTIVE, COMPLETED, OVERDUE"
-    ),
-    search: Optional[str] = Query(None, description="Search by package title"),
+    status: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    # Returns summary statistics and the list of investment packages funded by the investor. 
     return await InvestmentService(db).get_investor_investments(
-        investor_id=user.id,
-        status_filter=status,
-        search=search,
+        user=user, status_filter=status, search=search
     )
 
 
@@ -58,8 +44,6 @@ async def get_investment_detail(
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    # Returns specific investment details including package progress and settlement info.
     return await InvestmentService(db).get_investor_investment_detail(
-        investor_id=user.id,
-        investment_id=investment_id,
+        user=user, investment_id=investment_id
     )

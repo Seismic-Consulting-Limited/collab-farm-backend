@@ -8,7 +8,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.models.user_model import User
+from app.models.user_model import User, UserRole
 from app.models.wallet_model import (
     Transaction,
     TransactionStatus,
@@ -33,6 +33,14 @@ class WalletService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    def _verify_investor_role(self, user: User) -> None:
+        """Ensure the user is authorized as an Investor."""
+        if user.role != UserRole.INVESTOR:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. Only registered investors can access investor wallet operations.",
+            )
+
     async def _get_or_create_wallet(self, user_id: uuid.UUID) -> Wallet:
         # Helper method to fetch user wallet or create a new one
         result = await self.session.execute(
@@ -56,6 +64,7 @@ class WalletService:
     async def initialize_funding(
         self, user: User, payload: FundWalletSchema
     ) -> dict:
+        self._verify_investor_role(user)
         reference = f"WALLET_FUND_{uuid.uuid4().hex[:12]}"
         amount_in_kobo = int(payload.amount * 100)
 
@@ -97,6 +106,7 @@ class WalletService:
         }
 
     async def verify_funding(self, user: User, reference: str) -> dict:
+        self._verify_investor_role(user)
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"https://api.paystack.co/transaction/verify/{reference}",
@@ -146,6 +156,7 @@ class WalletService:
         }
 
     async def get_overview(self, user: User) -> Wallet:
+        self._verify_investor_role(user)
         return await self._get_or_create_wallet(user.id)
 
     async def get_transactions(
@@ -155,6 +166,7 @@ class WalletService:
         limit: int = 20,
         offset: int = 0,
     ) -> List[Transaction]:
+        self._verify_investor_role(user)
         result = await self.session.execute(
             select(Wallet).where(Wallet.user_id == user.id)
         )
@@ -182,6 +194,7 @@ class WalletService:
     async def withdraw_funds(
         self, user: User, payload: WithdrawalRequestSchema
     ) -> dict:
+        self._verify_investor_role(user)
         result = await self.session.execute(
             select(Wallet).where(Wallet.user_id == user.id)
         )

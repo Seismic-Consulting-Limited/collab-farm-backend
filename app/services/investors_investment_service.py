@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.cooperative_investment_model import Investment, InvestmentStatus
 from app.models.package_model import Package
+from app.models.user_model import User, UserRole
 from app.models.wallet_model import (
     Transaction,
     TransactionStatus,
@@ -59,9 +60,21 @@ class InvestmentService:
             return cat.value if hasattr(cat, "value") else str(cat)
         return "General"
 
+    def _verify_investor_role(self, user: User) -> None:
+        """Ensure the user is authorized as an Investor."""
+        if user.role != UserRole.INVESTOR:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. Only registered investors can access this page.",
+            )
+
     async def process_investment(
-        self, investor_id: uuid.UUID, data: InvestmentCreateRequest
+        self, user: User, data: InvestmentCreateRequest
     ) -> InvestmentResponse:
+        # --- 0. Role-based check ---
+        self._verify_investor_role(user)
+        investor_id = user.id
+
         # --- 1. Fetch & Validate Wallet ---
         wallet_stmt = select(Wallet).where(Wallet.user_id == investor_id)
         wallet_res = await self.db.execute(wallet_stmt)
@@ -178,10 +191,14 @@ class InvestmentService:
 
     async def get_investor_investments(
         self,
-        investor_id: uuid.UUID,
+        user: User,
         status_filter: Optional[str] = None,
         search: Optional[str] = None,
     ) -> InvestorInvestmentsOverviewResponse:
+        # --- Role-based check ---
+        self._verify_investor_role(user)
+        investor_id = user.id
+
         stmt = (
             select(Investment)
             .options(selectinload(Investment.package))
@@ -262,8 +279,12 @@ class InvestmentService:
         )
 
     async def get_investor_investment_detail(
-        self, investor_id: uuid.UUID, investment_id: uuid.UUID
+        self, user: User, investment_id: uuid.UUID
     ) -> InvestorInvestmentDetailResponse:
+        # --- Role-based check ---
+        self._verify_investor_role(user)
+        investor_id = user.id
+
         stmt = (
             select(Investment)
             .options(selectinload(Investment.package))
