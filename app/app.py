@@ -1,12 +1,9 @@
 from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-
 from app.db import create_db_and_tables
 from app.users import (
     auth_backend,
@@ -14,7 +11,6 @@ from app.users import (
     google_oauth_client,
     SECRET,
 )
-
 from app.schemas.user_schema import UserRead, UserUpdate
 from app.routers.profile_route import router as onboarding_router
 from app.routers.auth_route import router as auth_router
@@ -54,14 +50,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-
 app.state.limiter = limiter
-
 app.add_exception_handler(
     RateLimitExceeded,
     _rate_limit_exceeded_handler,
 )
-
 
 origins = [
     "http://localhost:5173",
@@ -76,7 +69,6 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
-
 app.include_router(
     fastapi_users.get_users_router(
         UserRead,
@@ -85,7 +77,6 @@ app.include_router(
     prefix="/users",
     tags=["Users"],
 )
-
 app.include_router(
     fastapi_users.get_oauth_router(
         google_oauth_client,
@@ -95,26 +86,16 @@ app.include_router(
     prefix="/auth/google",
     tags=["Google Authentication"],
 )
-
 app.include_router(
     onboarding_router,
     prefix="/onboard",
 )
-
 app.include_router(cooperative_dashboard_router)
-
 app.include_router(packages_router)
-
 app.include_router(farmer_router)
-
 app.include_router(cooperative_investment_router)
-
 app.include_router(disbursement_router)
-
 app.include_router(investor_dashboard_router)
-
 app.include_router(wallet_router)
-
 app.include_router(investors_investment_router)
-
 app.include_router(chatbot_router)
