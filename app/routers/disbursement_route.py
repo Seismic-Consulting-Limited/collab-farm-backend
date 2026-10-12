@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_async_session
-from app.models.user_model import User, UserRole
+from app.models.user_model import User
 from app.schemas.disbursement_schema import (
     DisbursementDetailResponse,
     PaginatedDisbursementResponse,
@@ -12,26 +12,24 @@ from app.schemas.disbursement_schema import (
 from app.services.disbursement_service import DisbursementService
 from app.users import current_active_user
 
-router = APIRouter(prefix="/disbursements", tags=["Disbursements"])
+router = APIRouter(prefix="/cooperative/disbursements", tags=["Cooperative Disbursements"])
 
 
 @router.get("", response_model=PaginatedDisbursementResponse, status_code=status.HTTP_200_OK)
-async def get_disbursements(
-    search: Optional[str] = Query(None, description="Search by package name or farming cycle"),
-    package_type: Optional[str] = Query(None, description="Filter by package category"),
-    status_filter: Optional[str] = Query(None, alias="status", description="Filter by package status"),
+async def get_disbursements_overview(
+    search: Optional[str] = Query(None),
+    package_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    cooperative_id = user.id if getattr(user, "role", None) == UserRole.COOPERATIVE else None
-
     return await DisbursementService(db).get_disbursements_overview(
-        cooperative_id=cooperative_id,
+        user=user,
         search=search,
         package_type=package_type,
-        status_filter=status_filter,
+        status_filter=status,
         page=page,
         page_size=page_size,
     )
@@ -43,4 +41,6 @@ async def get_disbursement_detail(
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    return await DisbursementService(db).get_disbursement_detail(package_id)
+    return await DisbursementService(db).get_disbursement_detail(
+        user=user, package_id=package_id
+    )

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cooperative_investment_model import Investment
 from app.models.package_model import Package, PackageCategory, PackageFarmer, PackageStatus
+from app.models.user_model import User, UserRole
 from app.schemas.disbursement_schema import (
     DisbursementDetailResponse,
     DisbursementListItem,
@@ -22,43 +23,58 @@ class DisbursementService:
 
     async def get_disbursements_overview(
         self,
-        cooperative_id: Optional[uuid.UUID] = None,
+        user: User,
         search: Optional[str] = None,
         package_type: Optional[str] = None,
         status_filter: Optional[str] = None,
         page: int = 1,
         page_size: int = 10,
     ) -> PaginatedDisbursementResponse:
+        # 1. Enforce Cooperative Role Check
+        if user.role != UserRole.COOPERATIVE:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. Only Cooperatives can view disbursement metrics.",
+            )
+
+        # Scoped strictly to the logged-in cooperative
+        cooperative_id = user.id
         now = datetime.now(timezone.utc)
-        base_query = select(Package)
+        base_query = select(Package).where(Package.cooperative_id == cooperative_id)
 
-        if cooperative_id:
-            base_query = base_query.where(Package.cooperative_id == cooperative_id)
-
-        # --- 1. Compute Card Metrics ---
-        total_disbursed_stmt = select(
-            func.coalesce(func.sum(Package.fund_amount), 0.0)
-        ).where(Package.status == PackageStatus.ACTIVE)
-
-        pending_stmt = select(
-            func.coalesce(func.sum(Package.fund_amount), 0.0),
-            func.count(Package.id),
-        ).where(Package.status == PackageStatus.PENDING)
-
-        this_month_stmt = select(
-            func.coalesce(func.sum(Package.fund_amount), 0.0)
-        ).where(
-            extract("month", Package.created_at) == now.month,
-            extract("year", Package.created_at) == now.year,
+        # --- Compute Card Metrics ---
+        total_disbursed_stmt = (
+            select(func.coalesce(func.sum(Package.fund_amount), 0.0))
+            .where(
+                Package.cooperative_id == cooperative_id,
+                Package.status == PackageStatus.ACTIVE,
+            )
         )
 
-        total_count_stmt = select(func.count(Package.id))
+        pending_stmt = (
+            select(
+                func.coalesce(func.sum(Package.fund_amount), 0.0),
+                func.count(Package.id),
+            )
+            .where(
+                Package.cooperative_id == cooperative_id,
+                Package.status == PackageStatus.PENDING,
+            )
+        )
 
-        if cooperative_id:
-            total_disbursed_stmt = total_disbursed_stmt.where(Package.cooperative_id == cooperative_id)
-            pending_stmt = pending_stmt.where(Package.cooperative_id == cooperative_id)
-            this_month_stmt = this_month_stmt.where(Package.cooperative_id == cooperative_id)
-            total_count_stmt = total_count_stmt.where(Package.cooperative_id == cooperative_id)
+        this_month_stmt = (
+            select(func.coalesce(func.sum(Package.fund_amount), 0.0))
+            .where(
+                Package.cooperative_id == cooperative_id,
+                extract("month", Package.created_at) == now.month,
+                extract("year", Package.created_at) == now.year,
+            )
+        )
+
+        total_count_stmt = (
+            select(func.count(Package.id))
+            .where(Package.cooperative_id == cooperative_id)
+        )
 
         total_disbursed = float((await self.db.execute(total_disbursed_stmt)).scalar() or 0.0)
         pending_res = (await self.db.execute(pending_stmt)).first()
@@ -75,7 +91,7 @@ class DisbursementService:
             total_disbursements_count=total_disbursements_count,
         )
 
-        # --- 2. Apply Filters & Search ---
+        # --- Apply Filters & Search ---
         filtered_query = base_query
 
         if search and search.strip():
@@ -102,7 +118,7 @@ class DisbursementService:
         count_stmt = select(func.count()).select_from(filtered_query.subquery())
         total_filtered = (await self.db.execute(count_stmt)).scalar() or 0
 
-        # --- 3. Pagination & Count Mapping ---
+        # --- Pagination & Item Mapping ---
         offset = (page - 1) * page_size
         paginated_query = (
             filtered_query.order_by(Package.created_at.desc())
@@ -151,12 +167,28 @@ class DisbursementService:
             total_pages=total_pages,
         )
 
-    async def get_disbursement_detail(self, package_id: uuid.UUID) -> DisbursementDetailResponse:
+    async def get_disbursement_detail(
+        self, user: User, package_id: uuid.UUID
+    ) -> DisbursementDetailResponse:
+        # 1. Enforce Cooperative Role Check
+        if user.role != UserRole.COOPERATIVE:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. Only Cooperatives can view disbursement details.",
+            )
+
         pkg = await self.db.get(Package, package_id)
         if not pkg:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Package with ID '{package_id}' not found.",
+            )
+
+        # 2. Enforce Ownership Check
+        if pkg.cooperative_id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Unauthorized. You do not own this package.",
             )
 
         investors_count = (
