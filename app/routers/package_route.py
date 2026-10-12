@@ -59,6 +59,7 @@ async def get_all_packages(
     package_type: Optional[PackageType] = None,
     status_filter: Optional[PackageStatus] = None,
     cooperative_id: Optional[uuid.UUID] = None,
+    user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     return await PackageService(db).get_all_packages(
