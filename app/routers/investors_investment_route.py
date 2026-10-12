@@ -27,10 +27,9 @@ async def create_investment(
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    """
-    Deducts funds from investor wallet and creates a new investment entry.
-    Rejects the request if the investor already has an active or pending investment in the same package.
-    """
+
+    # Deducts funds from investor wallet and creates a new investment entry.
+    # Rejects the request if the investor already has an active or pending investment in the same package.
     return await InvestmentService(db).process_investment(
         investor_id=user.id, data=payload
     )
@@ -45,9 +44,7 @@ async def get_my_investments(
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    """
-    Returns summary statistics and the list of investment packages funded by the investor.
-    """
+    # Returns summary statistics and the list of investment packages funded by the investor. 
     return await InvestmentService(db).get_investor_investments(
         investor_id=user.id,
         status_filter=status,
@@ -61,9 +58,7 @@ async def get_investment_detail(
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    """
-    Returns specific investment details including package progress and settlement info.
-    """
+    # Returns specific investment details including package progress and settlement info.
     return await InvestmentService(db).get_investor_investment_detail(
         investor_id=user.id,
         investment_id=investment_id,
