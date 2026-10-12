@@ -26,7 +26,7 @@ class FarmerService:
         self.db = db
 
     async def _has_active_investment(self, farmer_id: uuid.UUID) -> bool:
-        """Helper to verify if a farmer is linked to any active investment."""
+        # Helper to verify if a farmer is linked to any active investment
         stmt = (
             select(Investment.id)
             .join(PackageFarmer, Investment.package_id == PackageFarmer.package_id)

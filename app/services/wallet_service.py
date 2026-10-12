@@ -34,7 +34,7 @@ class WalletService:
         self.session = session
 
     async def _get_or_create_wallet(self, user_id: uuid.UUID) -> Wallet:
-        """Helper method to fetch user wallet or create a new one."""
+        # Helper method to fetch user wallet or create a new one
         result = await self.session.execute(
             select(Wallet).where(Wallet.user_id == user_id)
         )
