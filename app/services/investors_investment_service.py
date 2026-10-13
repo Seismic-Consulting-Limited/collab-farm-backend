@@ -69,7 +69,7 @@ class InvestmentService:
             )
 
     async def process_investment(
-        self, user: User, data: InvestmentCreateRequest
+        self, user: User, package_id: uuid.UUID, data: InvestmentCreateRequest
     ) -> InvestmentResponse:
         # --- 0. Role-based check ---
         self._verify_investor_role(user)
@@ -95,7 +95,7 @@ class InvestmentService:
             )
 
         # --- 2. Fetch & Validate Package ---
-        package_stmt = select(Package).where(Package.id == data.package_id)
+        package_stmt = select(Package).where(Package.id == package_id)
         package_res = await self.db.execute(package_stmt)
         package = package_res.unique().scalar_one_or_none()
 
@@ -117,7 +117,7 @@ class InvestmentService:
         active_statuses = [InvestmentStatus.ACTIVE, InvestmentStatus.PENDING]
         existing_inv_stmt = select(Investment).where(
             Investment.investor_id == investor_id,
-            Investment.package_id == data.package_id,
+            Investment.package_id == package_id,
             Investment.status.in_(active_statuses),
         )
         existing_inv_res = await self.db.execute(existing_inv_stmt)

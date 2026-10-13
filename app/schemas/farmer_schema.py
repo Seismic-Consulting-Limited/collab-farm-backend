@@ -136,7 +136,7 @@ class FarmerCreate(BaseModel):
     farming_category: Optional[FarmingCategory] = Field(
         None, description="Primary farming category"
     )
-    wrs_status: WRSStatus = WRSStatus.NOT_VERIFIED
+    wrs_status: WRSStatus = WRSStatus.VERIFIED
     additional_info: Optional[str] = None
     farms: Optional[list[FarmCreate]] = Field(default_factory=list)
 

@@ -17,13 +17,24 @@ from app.users import current_active_user
 router = APIRouter(prefix="/investments", tags=["Investors Investments"])
 
 
-@router.post("", response_model=InvestmentResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{package_id}",
+    response_model=InvestmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_investment(
+    package_id: uuid.UUID,
     payload: InvestmentCreateRequest,
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    return await InvestmentService(db).process_investment(user=user, data=payload)
+    """
+    Deducts funds from investor wallet and creates a new investment entry for the specified package.
+    Rejects the request if the investor already has an active or pending investment in the same package.
+    """
+    return await InvestmentService(db).process_investment(
+        user=user, package_id=package_id, data=payload
+    )
 
 
 @router.get("", response_model=InvestorInvestmentsOverviewResponse)
