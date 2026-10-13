@@ -96,7 +96,7 @@ class Farmer(Base, TimestampMixin):
 
     wrs_status: Mapped[WRSStatus] = mapped_column(
         FlexibleEnum(WRSStatus),
-        default=WRSStatus.NOT_VERIFIED,
+        default=WRSStatus.VERIFIED,
         nullable=False,
     )
 
