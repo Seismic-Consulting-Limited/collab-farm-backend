@@ -1,4 +1,3 @@
-# app/schemas/packageSchema.py
 import uuid
 from datetime import date, datetime
 from typing import List, Optional
@@ -23,8 +22,7 @@ class PackageCreate(BaseModel):
     tenure_months: int
     expected_payback_date: date
     expected_roi: float = Field(..., description="Percentage ROI e.g. 15.0")
-    cooperative_share: float = Field(...,
-                                     description="Cooperative cut % e.g. 5.0")
+    cooperative_share: float = Field(..., description="Cooperative cut % e.g. 5.0")
 
     @model_validator(mode="after")
     def validate_fund_amount_by_type(self):
@@ -65,7 +63,7 @@ class PackageInvestorDetail(BaseModel):
     investor_id: uuid.UUID
     amount: float
     invested_at: datetime = Field(..., alias="created_at")
-    payback_due_date: Optional[date] = None 
+    payback_due_date: Optional[date] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -127,6 +125,14 @@ class PackageRead(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PaginatedPackageResponse(BaseModel):
+    items: List[PackageRead]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class PackageUpdate(BaseModel):

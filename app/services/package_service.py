@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
 from app.models.cooperative_investment_model import Investment
 from app.models.package_model import (
     FarmerPackageStatus,
@@ -72,7 +73,41 @@ class PackageService:
         await self.db.refresh(assignment)
         return assignment
 
-    async def get_package_details(self, package_id: uuid.UUID) -> PackageDetailRead:
+    async def get_all_packages(
+        self,
+        user: User,
+        category: Optional[PackageCategory] = None,
+        package_type: Optional[PackageType] = None,
+        status_filter: Optional[PackageStatus] = None,
+        cooperative_id: Optional[uuid.UUID] = None,
+    ) -> List[PackageRead]:
+        query = select(Package)
+
+        # --- Role-Based Scoping ---
+        if user.role == UserRole.COOPERATIVE:
+            # Cooperatives can ONLY see packages they created
+            query = query.where(Package.cooperative_id == user.id)
+        elif cooperative_id:
+            # Investors or Admins filtering by a specific cooperative
+            query = query.where(Package.cooperative_id == cooperative_id)
+
+        if category:
+            query = query.where(Package.category == category)
+        if package_type:
+            query = query.where(Package.package_type == package_type)
+        if status_filter:
+            query = query.where(Package.status == status_filter)
+
+        query = query.order_by(Package.created_at.desc())
+
+        result = await self.db.execute(query)
+        packages = result.scalars().all()
+
+        return [PackageRead.model_validate(pkg) for pkg in packages]
+
+    async def get_package_details(
+        self, user: User, package_id: uuid.UUID
+    ) -> PackageDetailRead:
         query = (
             select(Package)
             .options(
@@ -90,9 +125,16 @@ class PackageService:
                 detail="Investment package not found.",
             )
 
-        total_invested = sum(inv.amount for inv in package.investments)
+        # Enforce Ownership Check for Cooperatives
+        if user.role == UserRole.COOPERATIVE and package.cooperative_id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. You can only view packages created by your cooperative.",
+            )
+
+        total_invested = sum(float(inv.amount) for inv in package.investments)
         total_disbursed = sum(
-            pf.allocated_amount
+            float(pf.allocated_amount)
             for pf in package.package_farmers
             if pf.status == FarmerPackageStatus.DISBURSED
         )
@@ -106,11 +148,11 @@ class PackageService:
             category=package.category,
             farming_cycle=package.farming_cycle,
             short_description=package.short_description,
-            fund_amount=package.fund_amount,
+            fund_amount=float(package.fund_amount),
             tenure_months=package.tenure_months,
             expected_payback_date=package.expected_payback_date,
-            expected_roi=package.expected_roi,
-            cooperative_share=package.cooperative_share,
+            expected_roi=float(package.expected_roi),
+            cooperative_share=float(package.cooperative_share),
             status=package.status,
             financial_summary=PackageFinancialSummary(
                 total_money_invested=total_invested,
@@ -126,8 +168,23 @@ class PackageService:
         )
 
     async def get_package_investors(
-        self, package_id: uuid.UUID
+        self, user: User, package_id: uuid.UUID
     ) -> List[PackageInvestorResponse]:
+        pkg_res = await self.db.execute(select(Package).where(Package.id == package_id))
+        package = pkg_res.scalars().first()
+
+        if not package:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Investment package not found.",
+            )
+
+        if user.role == UserRole.COOPERATIVE and package.cooperative_id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. You can only view investors for your own packages.",
+            )
+
         query = (
             select(Investment)
             .options(selectinload(Investment.investor))
@@ -140,42 +197,17 @@ class PackageService:
             PackageInvestorResponse(
                 id=inv.id,
                 investor_id=inv.investor_id,
-                investor_name=f"{inv.investor.first_name or ''} {inv.investor.last_name or ''}".strip(
-                )
+                investor_name=f"{getattr(inv.investor, 'first_name', '') or ''} {getattr(inv.investor, 'last_name', '') or ''}".strip()
                 or inv.investor.email,
                 email=inv.investor.email,
-                investor_type=inv.investor.investor_type,
-                amount=inv.amount,
+                investor_type=getattr(inv.investor, "investor_type", None),
+                amount=float(inv.amount),
                 invested_at=inv.created_at,
-                payback_due_date=inv.payback_due_date,
+                payback_due_date=getattr(inv, "payback_due_date", package.expected_payback_date)
+                or package.expected_payback_date,
             )
             for inv in investments
         ]
-
-    async def get_all_packages(
-        self,
-        category: Optional[PackageCategory] = None,
-        package_type: Optional[PackageType] = None,
-        status_filter: Optional[PackageStatus] = None,
-        cooperative_id: Optional[uuid.UUID] = None,
-    ) -> List[PackageRead]:
-        query = select(Package)
-
-        if category:
-            query = query.where(Package.category == category)
-        if package_type:
-            query = query.where(Package.package_type == package_type)
-        if status_filter:
-            query = query.where(Package.status == status_filter)
-        if cooperative_id:
-            query = query.where(Package.cooperative_id == cooperative_id)
-
-        query = query.order_by(Package.created_at.desc())
-
-        result = await self.db.execute(query)
-        packages = result.scalars().all()
-
-        return [PackageRead.model_validate(pkg) for pkg in packages]
 
     async def update_package(
         self, user: User, package_id: uuid.UUID, payload: PackageUpdate
@@ -200,9 +232,9 @@ class PackageService:
         target_amount = update_data.get("fund_amount", package.fund_amount)
 
         min_amounts = {
-            PackageType.STARTER: 100.0,
-            PackageType.GROWTH: 300.0,
-            PackageType.COMMERCIAL: 500.0,
+            PackageType.STARTER: 1000000.00,
+            PackageType.GROWTH: 3000000.00,
+            PackageType.COMMERCIAL: 5000000.00,
         }
         min_required = min_amounts.get(target_type, 0.0)
         if target_amount < min_required:

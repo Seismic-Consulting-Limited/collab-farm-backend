@@ -1,11 +1,19 @@
 import uuid
+from typing import List, Optional
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.db import get_async_session
+from app.models.package_model import PackageCategory, PackageStatus, PackageType
 from app.models.user_model import User
-from app.schemas.package_schema import AssignFarmerSchema, PackageCreate, PackageDetailRead, PackageInvestorResponse, PackageRead, PackageUpdate
-from app.models.package_model import PackageStatus, PackageType, PackageCategory
-from typing import Optional
+from app.schemas.package_schema import (
+    AssignFarmerSchema,
+    PackageCreate,
+    PackageDetailRead,
+    PackageInvestorResponse,
+    PackageRead,
+    PackageUpdate,
+)
 from app.services.package_service import PackageService
 from app.users import current_active_user
 
@@ -36,24 +44,26 @@ async def assign_farmer_to_package(
 @router.get("/{package_id}", response_model=PackageDetailRead, status_code=status.HTTP_200_OK)
 async def get_package_detail(
     package_id: uuid.UUID,
+    user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    return await PackageService(db).get_package_details(package_id=package_id)
+    return await PackageService(db).get_package_details(user=user, package_id=package_id)
 
 
-# @router.get(
-#     "/{package_id}/investors",
-#     response_model=list[PackageInvestorResponse],
-#     status_code=status.HTTP_200_OK,
-# )
-# async def get_package_investors(
-#     package_id: uuid.UUID,
-#     db: AsyncSession = Depends(get_async_session),
-# ):
-#     return await PackageService(db).get_package_investors(package_id=package_id)
+@router.get(
+    "/{package_id}/investors",
+    response_model=List[PackageInvestorResponse],
+    status_code=status.HTTP_200_OK,
+)
+async def get_package_investors(
+    package_id: uuid.UUID,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    return await PackageService(db).get_package_investors(user=user, package_id=package_id)
 
 
-@router.get("/", response_model=list[PackageRead], status_code=status.HTTP_200_OK)
+@router.get("/", response_model=List[PackageRead], status_code=status.HTTP_200_OK)
 async def get_all_packages(
     category: Optional[PackageCategory] = None,
     package_type: Optional[PackageType] = None,
@@ -63,6 +73,7 @@ async def get_all_packages(
     db: AsyncSession = Depends(get_async_session),
 ):
     return await PackageService(db).get_all_packages(
+        user=user,
         category=category,
         package_type=package_type,
         status_filter=status_filter,
