@@ -25,6 +25,8 @@ class FarmingCategory(str, Enum):
     FISHERY = "fishery"
     MIXED_FARMING = "mixed_farming"
     POULTRY = "poultry"
+    LIVESTOCK = "livestock",
+    OTHERS = "others"
 
 
 class CooperativeSummary(BaseModel):
