@@ -39,7 +39,7 @@ async def add_farmer(
     gender: Gender = Form(...),
     farming_category: Optional[FarmingCategory] = Form(None),
     additional_info: Optional[str] = Form(None),
-    wrs_status: WRSStatus = Form(WRSStatus.NOT_VERIFIED),
+    wrs_status: WRSStatus = Form(WRSStatus.VERIFIED),
     photo: Optional[UploadFile] = File(None),
     farms_json: Optional[str] = Form(
         None,
