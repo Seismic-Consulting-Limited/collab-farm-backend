@@ -7,6 +7,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from enum import Enum
 from app.models.base import Base, TimestampMixin
+from app.schemas.farmer_schema import FarmingCategory
 
 
 class Gender(str, Enum):
@@ -24,11 +25,11 @@ class FarmStatus(str, enum.Enum):
     INACTIVE = "INACTIVE"
 
 
-class FarmingCategory(str, enum.Enum):
-    CROP_FARMING = "crop_farming"
-    FISHERY = "fishery"
-    MIXED_FARMING = "mixed_farming"
-    POULTRY = "poultry"
+# class FarmingCategory(str, enum.Enum):
+#     CROP_FARMING = "crop_farming"
+#     FISHERY = "fishery"
+#     MIXED_FARMING = "mixed_farming"
+#     POULTRY = "poultry"
 
 
 class FlexibleEnum(TypeDecorator):
