@@ -29,9 +29,9 @@ class PackageCreate(BaseModel):
     @model_validator(mode="after")
     def validate_fund_amount_by_type(self):
         min_amounts = {
-            PackageType.STARTER: 100.0,
-            PackageType.GROWTH: 300.0,
-            PackageType.COMMERCIAL: 500.0,
+            PackageType.STARTER: 1000000.00,
+            PackageType.GROWTH: 3000000.0,
+            PackageType.COMMERCIAL: 5000000.0,
         }
         min_required = min_amounts.get(self.package_type, 0.0)
         if self.fund_amount < min_required:
