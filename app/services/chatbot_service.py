@@ -8,8 +8,11 @@ from app.schemas.chatbot_schema import ChatRequest, ChatResponse
 
 load_dotenv()
 
-CHAT_BOT_URL = os.getenv("CHAT_BOT_URL", "http://192.168.88.225:8000")
+CHAT_BOT_URL = os.getenv("CHAT_BOT_URL", "https://collab-farm-ai.vercel.app/")
 CHAT_API_KEY = os.getenv("CHAT_API_KEY")
+
+# Compatibility fix for deprecated Starlette HTTP_422 constant
+HTTP_422_CODE = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", status.HTTP_422_UNPROCESSABLE_ENTITY)
 
 
 class ChatService:
@@ -32,7 +35,6 @@ class ChatService:
         }
 
         try:
-            # 60-second timeout as specified in the guide
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
                     f"{CHAT_BOT_URL.rstrip('/')}/chat",
@@ -50,9 +52,9 @@ class ChatService:
                     detail="Invalid or missing chatbot API key.",
                 )
 
-            elif response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY:
+            elif response.status_code == HTTP_422_CODE:
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=HTTP_422_CODE,
                     detail="Invalid request format sent to assistant.",
                 )
 
@@ -63,9 +65,10 @@ class ChatService:
                 )
 
             else:
+                print(f"\n[ChatService Error] Upstream returned status {response.status_code}: {response.text}\n")
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="The assistant is unavailable right now. Please try again shortly.",
+                    detail=f"Upstream chatbot returned HTTP {response.status_code}: {response.text}",
                 )
 
         except httpx.TimeoutException:
@@ -73,8 +76,9 @@ class ChatService:
                 status_code=status.HTTP_504_GATEWAY_TIMEOUT,
                 detail="The assistant took too long to respond. Please try again shortly.",
             )
-        except httpx.RequestError:
+        except httpx.RequestError as exc:
+            print(f"\n[ChatService Connection Error] Failed to reach {CHAT_BOT_URL}: {exc}\n")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="The assistant is unavailable right now. Please try again shortly.",
+                detail=f"Cannot connect to Chatbot microservice at {CHAT_BOT_URL}. Error: {str(exc)}",
             )

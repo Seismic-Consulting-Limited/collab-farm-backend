@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, status
+import traceback
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.models.user_model import User
 from app.schemas.chatbot_schema import ChatRequest, ChatResponse
@@ -17,4 +18,13 @@ async def chat_with_assistant(
     Proxy endpoint for talking to the CollabFarm AI Assistant.
     Requires an authenticated active user context.
     """
-    return await ChatService().send_message(user=user, payload=payload)
+    try:
+        return await ChatService().send_message(user=user, payload=payload)
+    except Exception as e:
+        print("\n" + "=" * 20 + " CHATBOT ERROR TRACEBACK " + "=" * 20)
+        traceback.print_exc()
+        print("=" * 65 + "\n")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Chatbot execution error: {str(e)}"
+        )
