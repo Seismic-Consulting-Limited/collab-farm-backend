@@ -12,10 +12,16 @@ from app.schemas.disbursement_schema import (
 from app.services.disbursement_service import DisbursementService
 from app.users import current_active_user
 
-router = APIRouter(prefix="/cooperative/disbursements", tags=["Cooperative Disbursements"])
+router = APIRouter(
+    prefix="/cooperative/disbursements", tags=["Cooperative Disbursements"]
+)
 
 
-@router.get("", response_model=PaginatedDisbursementResponse, status_code=status.HTTP_200_OK)
+@router.get(
+    "",
+    response_model=PaginatedDisbursementResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def get_disbursements_overview(
     search: Optional[str] = Query(None),
     package_type: Optional[str] = Query(None),
@@ -35,12 +41,16 @@ async def get_disbursements_overview(
     )
 
 
-@router.get("/{package_id}", response_model=DisbursementDetailResponse, status_code=status.HTTP_200_OK)
+@router.get(
+    "/{disbursement_id}",
+    response_model=DisbursementDetailResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def get_disbursement_detail(
-    package_id: uuid.UUID,
+    disbursement_id: uuid.UUID,
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     return await DisbursementService(db).get_disbursement_detail(
-        user=user, package_id=package_id
+        user=user, disbursement_id=disbursement_id
     )

@@ -6,14 +6,16 @@ from sqlalchemy import DateTime, Enum as SQLEnum, Float, ForeignKey, String, fun
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
+from app.models.farmer_model import Farmer
 
 
 class DisbursementStatus(str, enum.Enum):
     PENDING = "PENDING"
+    REVIEWING = "REVIEWING"
+    DISBURSED = "DISBURSED"
+    REJECTED = "REJECTED"
     COMPLETED = "COMPLETED"
-    ACTIVE = "ACTIVE"
-    REPAID = "REPAID"
-    OVERDUE = "OVERDUE"
+    FAILED = "FAILED"
 
 
 if TYPE_CHECKING:
@@ -33,7 +35,10 @@ class Disbursement(Base, TimestampMixin):
     cooperative_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    recorded_by_id: Mapped[uuid.UUID] = mapped_column(
+    farmer_id: Mapped[uuid.UUID] = mapped_column(
+    UUID(as_uuid=True), ForeignKey("farmers.id", ondelete="CASCADE"), nullable=False
+    )
+    recorded_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
@@ -52,6 +57,14 @@ class Disbursement(Base, TimestampMixin):
     notes: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     package: Mapped["Package"] = relationship(
-        "Package", back_populates="disbursements")
+        "Package", back_populates="disbursements"
+    )
+    cooperative: Mapped["User"] = relationship(
+        "User", foreign_keys=[cooperative_id]
+    )
+    farmer: Mapped["Farmer"] = relationship(
+    "Farmer", foreign_keys=[farmer_id]
+    )
     recorded_by: Mapped[Optional["User"]] = relationship(
-        "User", foreign_keys=[recorded_by_id])
+        "User", foreign_keys=[recorded_by_id]
+    )

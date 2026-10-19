@@ -4,7 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
+from app.models.disbursement_model import Disbursement, DisbursementStatus
 from app.models.cooperative_investment_model import Investment
 from app.models.package_model import (
     FarmerPackageStatus,
@@ -14,6 +14,7 @@ from app.models.package_model import (
     PackageStatus,
     PackageType,
 )
+from app.models.farmer_model import Farmer
 from app.models.user_model import User, UserRole
 from app.schemas.package_schema import (
     AssignFarmerSchema,
@@ -49,74 +50,112 @@ class PackageService:
         return package
 
     async def assign_farmer(
-    self, user: User, package_id: uuid.UUID, payload: AssignFarmerSchema
-) -> PackageFarmer:
-        result = await self.db.execute(select(Package).where(Package.id == package_id))
-        package = result.scalars().first()
+            self, user: User, package_id: uuid.UUID, payload: AssignFarmerSchema
+        ) -> PackageFarmer:
+            # 1. Verify Package Ownership
+            result = await self.db.execute(select(Package).where(Package.id == package_id))
+            package = result.scalars().first()
 
-        if not package or package.cooperative_id != user.id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Package not found or unauthorized.",
+            if not package or package.cooperative_id != user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Package not found or unauthorized.",
+                )
+
+            # 2. Fetch Farmer Profile
+            farmer_record = await self.db.get(Farmer, payload.farmer_id)
+            if not farmer_record:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Farmer profile with ID '{payload.farmer_id}' was not found.",
+                )
+
+            farmer_user_id = getattr(farmer_record, "user_id", farmer_record.id)
+
+            # 3. Create PackageFarmer Assignment
+            assignment = PackageFarmer(
+                package_id=package_id,
+                farmer_id=payload.farmer_id,
+                allocated_amount=package.fund_amount,
+                tenure_months=package.tenure_months,
+                expected_roi=package.expected_roi,
+                status=FarmerPackageStatus.PENDING,
             )
+            self.db.add(assignment)
 
-        assignment = PackageFarmer(
-            package_id=package_id,
-            farmer_id=payload.farmer_id,
-            allocated_amount=package.fund_amount,
-            tenure_months=package.tenure_months,
-            expected_roi=package.expected_roi,
-            status=FarmerPackageStatus.PENDING,
-        )
+            # 4. Auto-generate Disbursement Record
+            tx_ref = f"DSB-{str(package_id)[:4].upper()}-{str(payload.farmer_id)[:4].upper()}-{uuid.uuid4().hex[:6].upper()}"
 
-        self.db.add(assignment)
-        await self.db.commit()
-        await self.db.refresh(assignment)
-        return assignment
+            disbursement = Disbursement(
+                package_id=package_id,
+                cooperative_id=package.cooperative_id,
+                farmer_id=farmer_user_id,
+                recorded_by_id=user.id,
+                amount=float(package.fund_amount),
+                transaction_reference=tx_ref,
+                status=DisbursementStatus.PENDING,
+                notes=f"Auto-generated pending disbursement for package '{package.title}'",
+            )
+            self.db.add(disbursement)
 
+            # 5. Commit Transaction
+            await self.db.commit()
+
+            # 6. Eager-load relationships to avoid MissingGreenlet during FastAPI response serialization
+            query = (
+                select(PackageFarmer)
+                .options(
+                    selectinload(PackageFarmer.farmer),
+                    selectinload(PackageFarmer.package),
+                )
+                .where(PackageFarmer.id == assignment.id)
+            )
+            res = await self.db.execute(query)
+            return res.scalars().first()
+    
     async def get_all_packages(
-    self,
-    user: User,
-    category: Optional[PackageCategory] = None,
-    package_type: Optional[PackageType] = None,
-    status_filter: Optional[PackageStatus] = None,
-    cooperative_id: Optional[uuid.UUID] = None,
-) -> List[PackageRead]:
-        query = (
-            select(Package)
-            .options(
-                selectinload(Package.cooperative).selectinload(User.cooperative_profile)
-            )
-        )
-
-        if user.role == UserRole.COOPERATIVE:
-            query = query.where(Package.cooperative_id == user.id)
-        elif cooperative_id:
-            query = query.where(Package.cooperative_id == cooperative_id)
-
-        if category:
-            query = query.where(Package.category == category)
-        if package_type:
-            query = query.where(Package.package_type == package_type)
-        if status_filter:
-            query = query.where(Package.status == status_filter)
-
-        query = query.order_by(Package.created_at.desc())
-
-        result = await self.db.execute(query)
-        packages = result.scalars().all()
-
-        return [
-            PackageRead(
-                **PackageRead.model_validate(pkg).model_dump(exclude={"cooperative_name"}),
-                cooperative_name=(
-                    pkg.cooperative.cooperative_profile.cooperative_name
-                    if pkg.cooperative and pkg.cooperative.cooperative_profile
-                    else None
+        self,
+        user: User,
+        category: Optional[PackageCategory] = None,
+        package_type: Optional[PackageType] = None,
+        status_filter: Optional[PackageStatus] = None,
+        cooperative_id: Optional[uuid.UUID] = None,
+    ) -> List[PackageRead]:
+            query = (
+                select(Package)
+                .options(
+                    selectinload(Package.cooperative).selectinload(User.cooperative_profile)
                 )
             )
-            for pkg in packages
-    ]
+
+            if user.role == UserRole.COOPERATIVE:
+                query = query.where(Package.cooperative_id == user.id)
+            elif cooperative_id:
+                query = query.where(Package.cooperative_id == cooperative_id)
+
+            if category:
+                query = query.where(Package.category == category)
+            if package_type:
+                query = query.where(Package.package_type == package_type)
+            if status_filter:
+                query = query.where(Package.status == status_filter)
+
+            query = query.order_by(Package.created_at.desc())
+
+            result = await self.db.execute(query)
+            packages = result.scalars().all()
+
+            return [
+                PackageRead(
+                    **PackageRead.model_validate(pkg).model_dump(exclude={"cooperative_name"}),
+                    cooperative_name=(
+                        pkg.cooperative.cooperative_profile.cooperative_name
+                        if pkg.cooperative and pkg.cooperative.cooperative_profile
+                        else None
+                    )
+                )
+                for pkg in packages
+        ]
 
     async def get_package_details(
     self, user: User, package_id: uuid.UUID

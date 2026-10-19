@@ -2,17 +2,21 @@ import math
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
+
 from fastapi import HTTPException, status
 from sqlalchemy import extract, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.models.cooperative_investment_model import Investment
-from app.models.package_model import Package, PackageCategory, PackageFarmer, PackageStatus
+from app.models.disbursement_model import Disbursement, DisbursementStatus
+from app.models.package_model import Package, PackageCategory
 from app.models.user_model import User, UserRole
 from app.schemas.disbursement_schema import (
     DisbursementDetailResponse,
+    DisbursementFarmerSummary,
     DisbursementListItem,
     DisbursementMetrics,
+    DisbursementPackageSummary,
     PaginatedDisbursementResponse,
 )
 
@@ -37,43 +41,45 @@ class DisbursementService:
                 detail="Access denied. Only Cooperatives can view disbursement metrics.",
             )
 
-        # Scoped strictly to the logged-in cooperative
         cooperative_id = user.id
         now = datetime.now(timezone.utc)
-        base_query = select(Package).where(Package.cooperative_id == cooperative_id)
 
-        # --- Compute Card Metrics ---
+        # --- Compute Summary KPI Card Metrics ---
         total_disbursed_stmt = (
-            select(func.coalesce(func.sum(Package.fund_amount), 0.0))
+            select(func.coalesce(func.sum(Disbursement.amount), 0.0))
             .where(
-                Package.cooperative_id == cooperative_id,
-                Package.status == PackageStatus.ACTIVE,
+                Disbursement.cooperative_id == cooperative_id,
+                Disbursement.status.in_(
+                    [DisbursementStatus.DISBURSED, DisbursementStatus.COMPLETED]),
             )
         )
 
         pending_stmt = (
             select(
-                func.coalesce(func.sum(Package.fund_amount), 0.0),
-                func.count(Package.id),
+                func.coalesce(func.sum(Disbursement.amount), 0.0),
+                func.count(Disbursement.id),
             )
             .where(
-                Package.cooperative_id == cooperative_id,
-                Package.status == PackageStatus.PENDING,
+                Disbursement.cooperative_id == cooperative_id,
+                Disbursement.status.in_(
+                    [DisbursementStatus.PENDING, DisbursementStatus.REVIEWING]),
             )
         )
 
         this_month_stmt = (
-            select(func.coalesce(func.sum(Package.fund_amount), 0.0))
+            select(func.coalesce(func.sum(Disbursement.amount), 0.0))
             .where(
-                Package.cooperative_id == cooperative_id,
-                extract("month", Package.created_at) == now.month,
-                extract("year", Package.created_at) == now.year,
+                Disbursement.cooperative_id == cooperative_id,
+                Disbursement.status.in_(
+                    [DisbursementStatus.DISBURSED, DisbursementStatus.COMPLETED]),
+                extract("month", Disbursement.disbursement_date) == now.month,
+                extract("year", Disbursement.disbursement_date) == now.year,
             )
         )
 
         total_count_stmt = (
-            select(func.count(Package.id))
-            .where(Package.cooperative_id == cooperative_id)
+            select(func.count(Disbursement.id))
+            .where(Disbursement.cooperative_id == cooperative_id)
         )
 
         total_disbursed = float((await self.db.execute(total_disbursed_stmt)).scalar() or 0.0)
@@ -91,72 +97,97 @@ class DisbursementService:
             total_disbursements_count=total_disbursements_count,
         )
 
-        # --- Apply Filters & Search ---
-        filtered_query = base_query
+        # --- Build Base List Query with Eager Loading ---
+        base_query = (
+            select(Disbursement)
+            .join(Disbursement.farmer)
+            .join(Disbursement.package)
+            .options(
+                selectinload(Disbursement.farmer),
+                selectinload(Disbursement.package),
+            )
+            .where(Disbursement.cooperative_id == cooperative_id)
+        )
 
+        # --- Apply Search ---
         if search and search.strip():
             pattern = f"%{search.strip()}%"
-            filtered_query = filtered_query.where(
+            base_query = base_query.where(
                 or_(
+                    User.first_name.ilike(pattern),
+                    User.last_name.ilike(pattern),
+                    User.email.ilike(pattern),
                     Package.title.ilike(pattern),
-                    Package.farming_cycle.ilike(pattern),
+                    Disbursement.transaction_reference.ilike(pattern),
                 )
             )
 
+        # --- Apply Package Category / Type Filter ---
         if package_type and package_type.lower() != "all":
             category_key = package_type.strip().upper().replace(" ", "_")
             if category_key in PackageCategory.__members__:
-                filtered_query = filtered_query.where(
+                base_query = base_query.where(
                     Package.category == PackageCategory[category_key]
                 )
 
-        if status_filter and status_filter.upper() in PackageStatus.__members__:
-            filtered_query = filtered_query.where(
-                Package.status == PackageStatus[status_filter.upper()]
+        # --- Apply Disbursement Status Filter ---
+        if status_filter and status_filter.upper() in DisbursementStatus.__members__:
+            base_query = base_query.where(
+                Disbursement.status == DisbursementStatus[status_filter.upper(
+                )]
             )
 
-        count_stmt = select(func.count()).select_from(filtered_query.subquery())
+        # Total Filtered Count
+        count_stmt = select(func.count()).select_from(base_query.subquery())
         total_filtered = (await self.db.execute(count_stmt)).scalar() or 0
 
-        # --- Pagination & Item Mapping ---
+        # --- Pagination Execution ---
         offset = (page - 1) * page_size
         paginated_query = (
-            filtered_query.order_by(Package.created_at.desc())
+            base_query.order_by(Disbursement.created_at.desc())
             .offset(offset)
             .limit(page_size)
         )
 
         result = await self.db.execute(paginated_query)
-        packages = result.scalars().all()
+        disbursements = result.scalars().all()
 
         items = []
-        for pkg in packages:
-            investors_count = (
-                await self.db.execute(
-                    select(func.count(Investment.id)).where(Investment.package_id == pkg.id)
-                )
-            ).scalar() or 0
+        for disb in disbursements:
+            farmer_user = disb.farmer
+            farmer_name = (
+                f"{getattr(farmer_user, 'first_name', '') or ''} {getattr(farmer_user, 'last_name', '') or ''}".strip()
+                or getattr(farmer_user, "email", "")
+            )
 
-            farmers_count = (
-                await self.db.execute(
-                    select(func.count(PackageFarmer.id)).where(PackageFarmer.package_id == pkg.id)
-                )
-            ).scalar() or 0
+            farmer_summary = DisbursementFarmerSummary(
+                id=farmer_user.id,
+                full_name=farmer_name,
+                farmer_code=getattr(farmer_user, "farmer_code",
+                                    f"PKG-{str(farmer_user.id)[:5].upper()}"),
+                photo_url=getattr(farmer_user, "photo_url", None),
+            )
+
+            package_summary = DisbursementPackageSummary(
+                id=disb.package.id,
+                title=disb.package.title,
+                category=disb.package.category,
+                package_type=getattr(disb.package, "package_type", None),
+            )
 
             items.append(
                 DisbursementListItem(
-                    id=pkg.id,
-                    package_name=pkg.title,
-                    category=pkg.category,
-                    investors_count=investors_count,
-                    farmers_count=farmers_count,
-                    amount=float(pkg.fund_amount),
-                    date_invested=pkg.created_at,
-                    status=pkg.status,
+                    id=disb.id,
+                    farmer=farmer_summary,
+                    package=package_summary,
+                    amount_disbursed=float(disb.amount),
+                    disbursement_date=disb.disbursement_date,
+                    status=disb.status,
                 )
             )
 
-        total_pages = math.ceil(total_filtered / page_size) if page_size > 0 else 1
+        total_pages = math.ceil(
+            total_filtered / page_size) if page_size > 0 else 1
 
         return PaginatedDisbursementResponse(
             metrics=metrics,
@@ -168,7 +199,7 @@ class DisbursementService:
         )
 
     async def get_disbursement_detail(
-        self, user: User, package_id: uuid.UUID
+        self, user: User, disbursement_id: uuid.UUID
     ) -> DisbursementDetailResponse:
         # 1. Enforce Cooperative Role Check
         if user.role != UserRole.COOPERATIVE:
@@ -177,45 +208,57 @@ class DisbursementService:
                 detail="Access denied. Only Cooperatives can view disbursement details.",
             )
 
-        pkg = await self.db.get(Package, package_id)
-        if not pkg:
+        query = (
+            select(Disbursement)
+            .options(
+                selectinload(Disbursement.farmer),
+                selectinload(Disbursement.package),
+                selectinload(Disbursement.recorded_by),
+            )
+            .where(Disbursement.id == disbursement_id)
+        )
+        result = await self.db.execute(query)
+        disb = result.scalars().first()
+
+        if not disb:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Package with ID '{package_id}' not found.",
+                detail=f"Disbursement record with ID '{disbursement_id}' not found.",
             )
 
-        # 2. Enforce Ownership Check
-        if pkg.cooperative_id != user.id:
+        # 2. Enforce Cooperative Ownership Check
+        if disb.cooperative_id != user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Unauthorized. You do not own this package.",
+                detail="Unauthorized. You do not own this disbursement record.",
             )
 
-        investors_count = (
-            await self.db.execute(
-                select(func.count(Investment.id)).where(Investment.package_id == pkg.id)
-            )
-        ).scalar() or 0
+        farmer_user = disb.farmer
+        farmer_name = (
+            f"{getattr(farmer_user, 'first_name', '') or ''} {getattr(farmer_user, 'last_name', '') or ''}".strip()
+            or getattr(farmer_user, "email", "")
+        )
 
-        farmers_count = (
-            await self.db.execute(
-                select(func.count(PackageFarmer.id)).where(PackageFarmer.package_id == pkg.id)
-            )
-        ).scalar() or 0
+        farmer_code = getattr(
+            farmer_user, "farmer_code", f"PKG-{str(disb.id)[:5].upper()}"
+        )
 
-        total_amount = float(pkg.fund_amount)
-        is_active = pkg.status == PackageStatus.ACTIVE
+        recorded_by_name = "Admin User"
+        if disb.recorded_by:
+            recorded_by_name = (
+                f"{getattr(disb.recorded_by, 'first_name', '') or ''} {getattr(disb.recorded_by, 'last_name', '') or ''}".strip()
+                or disb.recorded_by.email
+            )
 
         return DisbursementDetailResponse(
-            id=pkg.id,
-            package_name=pkg.title,
-            package_code=f"PKG-{str(pkg.id)[:8].upper()}",
-            category=pkg.category,
-            crop_type=pkg.farming_cycle,
-            total_package_amount=total_amount,
-            currently_disbursed=total_amount if is_active else 0.0,
-            remaining_to_disburse=0.0 if is_active else total_amount,
-            investors_count=investors_count,
-            farmers_count=farmers_count,
-            status=pkg.status,
+            id=disb.id,
+            farmer_id_code=farmer_code,
+            farmer_name=farmer_name,
+            photo_url=getattr(farmer_user, "photo_url", None),
+            status=disb.status,
+            amount_disbursed=float(disb.amount),
+            disbursed_at=disb.disbursement_date,
+            recorded_by=recorded_by_name,
+            transaction_reference=disb.transaction_reference,
+            package_title=disb.package.title if disb.package else None,
         )

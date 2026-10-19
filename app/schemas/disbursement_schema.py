@@ -1,8 +1,10 @@
 import uuid
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, ConfigDict
-from app.models.package_model import PackageCategory, PackageStatus
+
+from app.models.disbursement_model import DisbursementStatus
+from app.models.package_model import PackageCategory, PackageType
 
 
 class DisbursementMetrics(BaseModel):
@@ -15,15 +17,31 @@ class DisbursementMetrics(BaseModel):
     total_disbursements_count: int
 
 
+class DisbursementFarmerSummary(BaseModel):
+    id: uuid.UUID
+    full_name: str
+    farmer_code: Optional[str] = None
+    photo_url: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DisbursementPackageSummary(BaseModel):
+    id: uuid.UUID
+    title: str
+    category: PackageCategory
+    package_type: Optional[PackageType] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class DisbursementListItem(BaseModel):
     id: uuid.UUID
-    package_name: str
-    category: PackageCategory
-    investors_count: int
-    farmers_count: int
-    amount: float
-    date_invested: datetime
-    status: PackageStatus
+    farmer: DisbursementFarmerSummary
+    package: DisbursementPackageSummary
+    amount_disbursed: float
+    disbursement_date: datetime
+    status: DisbursementStatus
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -39,13 +57,14 @@ class PaginatedDisbursementResponse(BaseModel):
 
 class DisbursementDetailResponse(BaseModel):
     id: uuid.UUID
-    package_name: str
-    package_code: str
-    category: PackageCategory
-    crop_type: str
-    total_package_amount: float
-    currently_disbursed: float
-    remaining_to_disburse: float
-    investors_count: int
-    farmers_count: int
-    status: PackageStatus
+    farmer_id_code: str
+    farmer_name: str
+    photo_url: Optional[str] = None
+    status: DisbursementStatus
+    amount_disbursed: float
+    disbursed_at: Optional[datetime] = None
+    recorded_by: Optional[str] = None
+    transaction_reference: Optional[str] = None
+    package_title: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
