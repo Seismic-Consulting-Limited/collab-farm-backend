@@ -124,6 +124,7 @@ class PackageService:
         query = (
             select(Package)
             .options(
+                selectinload(Package.cooperative).selectinload(User.cooperative_profile),
                 selectinload(Package.package_farmers).selectinload(PackageFarmer.farmer),
                 selectinload(Package.investments),
             )
@@ -152,9 +153,27 @@ class PackageService:
         )
         remaining_balance = total_invested - total_disbursed
 
+        # Safe evaluation for user role
+        user_role_str = (
+            user.role.value if hasattr(user.role, "value") else str(user.role)
+        ).upper()
+
+        # Hide assigned_farmers and investors if user is an INVESTOR
+        if user_role_str == "INVESTOR" or user.role == UserRole.INVESTOR:
+            assigned_farmers = []
+            investors = []
+        else:
+            assigned_farmers = [
+                PackageFarmerDetail.model_validate(pf) for pf in package.package_farmers
+            ]
+            investors = [
+                PackageInvestorDetail.model_validate(inv) for inv in package.investments
+            ]
+
         return PackageDetailRead(
             id=package.id,
             cooperative_id=package.cooperative_id,
+            cooperative_name=getattr(package, "cooperative_name", None),
             title=package.title,
             package_type=package.package_type,
             category=package.category,
@@ -171,17 +190,24 @@ class PackageService:
                 total_disbursed_to_farmers=total_disbursed,
                 remaining_balance=remaining_balance,
             ),
-            assigned_farmers=[
-                PackageFarmerDetail.model_validate(pf) for pf in package.package_farmers
-            ],
-            investors=[
-                PackageInvestorDetail.model_validate(inv) for inv in package.investments
-            ],
+            assigned_farmers=assigned_farmers,  # Pass filtered list
+            investors=investors,                # Pass filtered list
         )
+
 
     async def get_package_investors(
         self, user: User, package_id: uuid.UUID
     ) -> List[PackageInvestorResponse]:
+        # Restrict investors from accessing the package investors endpoint directly
+        user_role_str = (
+            user.role.value if hasattr(user.role, "value") else str(user.role)
+        ).upper()
+        if user_role_str == "INVESTOR" or user.role == UserRole.INVESTOR:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. Investors cannot view investor details.",
+            )
+
         pkg_res = await self.db.execute(select(Package).where(Package.id == package_id))
         package = pkg_res.scalars().first()
 

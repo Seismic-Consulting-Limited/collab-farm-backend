@@ -87,8 +87,8 @@ class PackageDetailRead(BaseModel):
     cooperative_share: float
     status: PackageStatus
     financial_summary: PackageFinancialSummary
-    assigned_farmers: List[PackageFarmerDetail]
-    investors: List[PackageInvestorDetail]
+    assigned_farmers: List[PackageFarmerDetail] = []
+    investors: List[PackageInvestorDetail] = []
 
     model_config = ConfigDict(from_attributes=True)
 
