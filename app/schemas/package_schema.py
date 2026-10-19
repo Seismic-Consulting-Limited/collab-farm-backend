@@ -38,21 +38,17 @@ class PackageCreate(BaseModel):
             )
         return self
 
-
 class AssignFarmerSchema(BaseModel):
     farmer_id: uuid.UUID
-    allocated_amount: float
-    payout_date: Optional[date] = None
-    payback_date: Optional[date] = None
-
 
 class PackageFarmerDetail(BaseModel):
     id: uuid.UUID
+    package_id: uuid.UUID
     farmer_id: uuid.UUID
     allocated_amount: float
-    progress_percentage: float
-    payout_date: Optional[date] = None
-    payback_date: Optional[date] = None
+    tenure_months: int
+    expected_roi: float
+    progress_percentage: float = 0.0
     status: FarmerPackageStatus
 
     model_config = ConfigDict(from_attributes=True)

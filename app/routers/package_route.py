@@ -13,6 +13,7 @@ from app.schemas.package_schema import (
     PackageInvestorResponse,
     PackageRead,
     PackageUpdate,
+    PackageFarmerDetail
 )
 from app.services.package_service import PackageService
 from app.users import current_active_user
@@ -29,7 +30,11 @@ async def create_package(
     return await PackageService(db).create_package(user=user, payload=payload)
 
 
-@router.post("/{package_id}/assign-farmer", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{package_id}/assign-farmer",
+    response_model=PackageFarmerDetail,
+    status_code=status.HTTP_201_CREATED,
+)
 async def assign_farmer_to_package(
     package_id: uuid.UUID,
     payload: AssignFarmerSchema,

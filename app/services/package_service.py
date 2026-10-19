@@ -49,8 +49,8 @@ class PackageService:
         return package
 
     async def assign_farmer(
-        self, user: User, package_id: uuid.UUID, payload: AssignFarmerSchema
-    ) -> PackageFarmer:
+    self, user: User, package_id: uuid.UUID, payload: AssignFarmerSchema
+) -> PackageFarmer:
         result = await self.db.execute(select(Package).where(Package.id == package_id))
         package = result.scalars().first()
 
@@ -63,11 +63,12 @@ class PackageService:
         assignment = PackageFarmer(
             package_id=package_id,
             farmer_id=payload.farmer_id,
-            allocated_amount=payload.allocated_amount,
-            payout_date=payload.payout_date,
-            payback_date=payload.payback_date or package.expected_payback_date,
+            allocated_amount=package.fund_amount,
+            tenure_months=package.tenure_months,
+            expected_roi=package.expected_roi,
             status=FarmerPackageStatus.PENDING,
         )
+
         self.db.add(assignment)
         await self.db.commit()
         await self.db.refresh(assignment)

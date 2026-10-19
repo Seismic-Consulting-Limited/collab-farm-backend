@@ -109,11 +109,15 @@ class PackageFarmer(Base, TimestampMixin):
     progress_percentage: Mapped[float] = mapped_column(
         Float, default=0.0, nullable=False
     )
-    payout_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    payback_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    tenure_months: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    expected_roi: Mapped[float] = mapped_column(
+        Numeric(5, 2), nullable=False, default=0.0
+    )
     status: Mapped[FarmerPackageStatus] = mapped_column(
         SQLEnum(FarmerPackageStatus, native_enum=False),
-        default=FarmerPackageStatus.ACTIVE,
+        default=FarmerPackageStatus.PENDING,
         nullable=False,
     )
 
