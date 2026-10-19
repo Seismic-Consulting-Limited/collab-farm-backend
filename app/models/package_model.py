@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.cooperative_investment_model import Investment
     from app.models.user_model import User
     from app.models.disbursement_model import Disbursement
+    from app.models.profile_model import CooperativeProfile
 
 
 class PackageType(str, Enum):
@@ -125,3 +126,25 @@ class PackageFarmer(Base, TimestampMixin):
         "Package", back_populates="package_farmers"
     )
     farmer: Mapped["Farmer"] = relationship("Farmer")
+    
+    @property
+    def name(self) -> str:
+        if self.farmer:
+            return getattr(self.farmer, "full_name", "") or ""
+        return ""
+
+    @property
+    def photo(self) -> Optional[str]:
+        if self.farmer:
+            return (
+                getattr(self.farmer, "photo", None)
+                or getattr(self.farmer, "photo_url", None)
+                or getattr(self.farmer, "avatar_url", None)
+            )
+        return None
+    
+    @property
+    def cooperative_name(self) -> Optional[str]:
+        if self.cooperative and self.cooperative.cooperative_profile:
+            return self.cooperative.cooperative_profile.cooperative_name
+        return None

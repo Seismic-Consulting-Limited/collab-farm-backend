@@ -48,6 +48,8 @@ class PackageFarmerDetail(BaseModel):
     allocated_amount: float
     tenure_months: int
     expected_roi: float
+    name: str
+    photo: Optional[str]
     progress_percentage: float = 0.0
     status: FarmerPackageStatus
 
@@ -107,6 +109,7 @@ class PackageInvestorResponse(BaseModel):
 class PackageRead(BaseModel):
     id: uuid.UUID
     cooperative_id: uuid.UUID
+    cooperative_name: Optional[str] = None  
     title: str
     package_type: PackageType
     category: PackageCategory

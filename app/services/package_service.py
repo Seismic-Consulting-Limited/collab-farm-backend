@@ -75,21 +75,23 @@ class PackageService:
         return assignment
 
     async def get_all_packages(
-        self,
-        user: User,
-        category: Optional[PackageCategory] = None,
-        package_type: Optional[PackageType] = None,
-        status_filter: Optional[PackageStatus] = None,
-        cooperative_id: Optional[uuid.UUID] = None,
-    ) -> List[PackageRead]:
-        query = select(Package)
+    self,
+    user: User,
+    category: Optional[PackageCategory] = None,
+    package_type: Optional[PackageType] = None,
+    status_filter: Optional[PackageStatus] = None,
+    cooperative_id: Optional[uuid.UUID] = None,
+) -> List[PackageRead]:
+        query = (
+            select(Package)
+            .options(
+                selectinload(Package.cooperative).selectinload(User.cooperative_profile)
+            )
+        )
 
-        # --- Role-Based Scoping ---
         if user.role == UserRole.COOPERATIVE:
-            # Cooperatives can ONLY see packages they created
             query = query.where(Package.cooperative_id == user.id)
         elif cooperative_id:
-            # Investors or Admins filtering by a specific cooperative
             query = query.where(Package.cooperative_id == cooperative_id)
 
         if category:
@@ -104,15 +106,25 @@ class PackageService:
         result = await self.db.execute(query)
         packages = result.scalars().all()
 
-        return [PackageRead.model_validate(pkg) for pkg in packages]
+        return [
+            PackageRead(
+                **PackageRead.model_validate(pkg).model_dump(exclude={"cooperative_name"}),
+                cooperative_name=(
+                    pkg.cooperative.cooperative_profile.cooperative_name
+                    if pkg.cooperative and pkg.cooperative.cooperative_profile
+                    else None
+                )
+            )
+            for pkg in packages
+    ]
 
     async def get_package_details(
-        self, user: User, package_id: uuid.UUID
-    ) -> PackageDetailRead:
+    self, user: User, package_id: uuid.UUID
+) -> PackageDetailRead:
         query = (
             select(Package)
             .options(
-                selectinload(Package.package_farmers),
+                selectinload(Package.package_farmers).selectinload(PackageFarmer.farmer),
                 selectinload(Package.investments),
             )
             .where(Package.id == package_id)
@@ -126,7 +138,6 @@ class PackageService:
                 detail="Investment package not found.",
             )
 
-        # Enforce Ownership Check for Cooperatives
         if user.role == UserRole.COOPERATIVE and package.cooperative_id != user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
