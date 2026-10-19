@@ -17,16 +17,16 @@ from app.models.wallet_model import (
 )
 from app.schemas.wallet_schema import (
     FundWalletSchema,
+    ResolveAccountRequestSchema,
     WithdrawalRequestSchema,
 )
 from app.utils.paystack import (
     create_transfer_recipient,
     initiate_paystack_transfer,
+    resolve_account_number,
 )
 
 load_dotenv()
-
-PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY")
 
 
 class WalletService:
@@ -34,7 +34,6 @@ class WalletService:
         self.session = session
 
     def _verify_investor_role(self, user: User) -> None:
-        """Ensure the user is authorized as an Investor."""
         if user.role != UserRole.INVESTOR:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -42,7 +41,6 @@ class WalletService:
             )
 
     async def _get_or_create_wallet(self, user_id: uuid.UUID) -> Wallet:
-        # Helper method to fetch user wallet or create a new one
         result = await self.session.execute(
             select(Wallet).where(Wallet.user_id == user_id)
         )
@@ -61,6 +59,20 @@ class WalletService:
 
         return wallet
 
+    async def resolve_bank_account(
+        self, user: User, payload: ResolveAccountRequestSchema
+    ) -> dict:
+        self._verify_investor_role(user)
+        account_data = await resolve_account_number(
+            account_number=payload.account_number,
+            bank_code=payload.bank_code,
+        )
+        return {
+            "account_number": account_data.get("account_number", payload.account_number),
+            "account_name": account_data.get("account_name"),
+            "bank_code": payload.bank_code,
+        }
+
     async def initialize_funding(
         self, user: User, payload: FundWalletSchema
     ) -> dict:
@@ -68,10 +80,11 @@ class WalletService:
         reference = f"WALLET_FUND_{uuid.uuid4().hex[:12]}"
         amount_in_kobo = int(payload.amount * 100)
 
+        secret_key = os.getenv("PAYSTACK_SECRET_KEY")
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 "https://api.paystack.co/transaction/initialize",
-                headers={"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"},
+                headers={"Authorization": f"Bearer {secret_key}"},
                 json={
                     "email": user.email,
                     "amount": amount_in_kobo,
@@ -107,10 +120,11 @@ class WalletService:
 
     async def verify_funding(self, user: User, reference: str) -> dict:
         self._verify_investor_role(user)
+        secret_key = os.getenv("PAYSTACK_SECRET_KEY")
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"https://api.paystack.co/transaction/verify/{reference}",
-                headers={"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"},
+                headers={"Authorization": f"Bearer {secret_key}"},
             )
 
         paystack_data = response.json()
@@ -208,23 +222,34 @@ class WalletService:
                 detail="Insufficient wallet balance for this withdrawal.",
             )
 
-        amount_in_kobo = int(withdrawal_amount * 100)
-        recipient_code = await create_transfer_recipient(
-            name=payload.account_name,
+        # 1. Resolve Account Number with Paystack
+        resolved_account = await resolve_account_number(
             account_number=payload.account_number,
             bank_code=payload.bank_code,
         )
+        verified_account_name = resolved_account.get("account_name", payload.account_name)
+
+        # 2. Create Transfer Recipient
+        amount_in_kobo = int(withdrawal_amount * 100)
+        recipient_code = await create_transfer_recipient(
+            name=verified_account_name,
+            account_number=payload.account_number,
+            bank_code=payload.bank_code,
+        )
+
+        # 3. Trigger Transfer
         transfer_data = await initiate_paystack_transfer(
             amount_kobo=amount_in_kobo, recipient_code=recipient_code
         )
 
+        # 4. Deduct Balance & Record Transaction
         wallet.available_balance -= withdrawal_amount
         is_success = transfer_data.get("status") in ["success", "pending"]
 
         transaction = Transaction(
             wallet_id=wallet.id,
             amount=withdrawal_amount,
-            description=f"Withdrawal to {payload.account_number} ({payload.account_name})",
+            description=f"Withdrawal to {payload.account_number} ({verified_account_name})",
             type=TransactionType.WITHDRAWAL,
             status=TransactionStatus.COMPLETED
             if is_success

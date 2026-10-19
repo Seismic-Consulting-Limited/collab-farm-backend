@@ -6,14 +6,33 @@ from app.db import get_async_session
 from app.models.user_model import User
 from app.schemas.wallet_schema import (
     FundWalletSchema,
+    ResolveAccountRequestSchema,
+    ResolveAccountResponseSchema,
     TransactionRead,
     WalletOverviewResponse,
     WithdrawalRequestSchema,
+    WithdrawalResponseSchema,
 )
 from app.services.wallet_service import WalletService
 from app.users import current_active_user
 
 router = APIRouter(prefix="/wallet", tags=["Investors Wallet"])
+
+
+@router.post(
+    "/resolve-account",
+    response_model=ResolveAccountResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def resolve_bank_account(
+    payload: ResolveAccountRequestSchema,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Verifies account number against Paystack before initiating a withdrawal."""
+    return await WalletService(session).resolve_bank_account(
+        user=user, payload=payload
+    )
 
 
 @router.post("/fund/initialize", status_code=status.HTTP_200_OK)
@@ -59,7 +78,11 @@ async def get_wallet_transactions(
     )
 
 
-@router.post("/withdraw", status_code=status.HTTP_200_OK)
+@router.post(
+    "/withdraw",
+    response_model=WithdrawalResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
 async def withdraw_funds(
     payload: WithdrawalRequestSchema,
     user: User = Depends(current_active_user),
