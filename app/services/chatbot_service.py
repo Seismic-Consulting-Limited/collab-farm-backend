@@ -1,4 +1,5 @@
 import os
+import logging
 import httpx
 from fastapi import HTTPException, status
 from dotenv import load_dotenv
@@ -8,22 +9,26 @@ from app.schemas.chatbot_schema import ChatRequest, ChatResponse
 
 load_dotenv()
 
-CHAT_BOT_URL = os.getenv("CHAT_BOT_URL", "https://collab-farm-ai.vercel.app/")
-CHAT_API_KEY = os.getenv("CHAT_API_KEY")
+logger = logging.getLogger(__name__)
+
+CHAT_BOT_URL = os.getenv("CHAT_BOT_URL", "https://collab-farm-ai-jymt.onrender.com/chat").rstrip("/")
+SERVICE_KEY = os.getenv("SERVICE_KEY") or os.getenv("CHAT_SERVICE_KEY") or os.getenv("CHAT_API_KEY")
+
+TARGET_ENDPOINT = CHAT_BOT_URL if CHAT_BOT_URL.endswith("/chat") else f"{CHAT_BOT_URL}/chat"
 
 
 class ChatService:
     async def send_message(self, user: User, payload: ChatRequest) -> ChatResponse:
-        if not CHAT_API_KEY:
+        if not SERVICE_KEY:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Chat assistant API key is missing from environment configuration.",
+                detail="Chat assistant Service Key (SERVICE_KEY) is missing from environment configuration.",
             )
 
+        # Match exact headers requested by AI team
         headers = {
             "Content-Type": "application/json",
-            "X-API-Key": CHAT_API_KEY,
-            "X-Client-Id": str(user.id),  # Scopes the 20 msg/min rate limit to individual users
+            "X-Service-Key": SERVICE_KEY,
         }
 
         request_body = {
@@ -34,7 +39,7 @@ class ChatService:
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
-                    f"{CHAT_BOT_URL.rstrip('/')}/chat",
+                    TARGET_ENDPOINT,
                     headers=headers,
                     json=request_body,
                 )
@@ -44,15 +49,24 @@ class ChatService:
                 return ChatResponse(answer=data.get("answer", ""))
 
             elif response.status_code == status.HTTP_401_UNAUTHORIZED:
+                key_preview = f"{SERVICE_KEY[:4]}***" if SERVICE_KEY else "None"
+                logger.error(f"[ChatService 401] Upstream rejected Service Key starting with '{key_preview}'")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid or missing chatbot API key.",
+                    detail="Upstream chatbot rejected the Service Key. Check SERVICE_KEY in .env.",
                 )
 
-            elif response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT:
+            elif response.status_code == status.HTTP_404_NOT_FOUND:
+                logger.error(f"[ChatService 404] Endpoint not found at {TARGET_ENDPOINT}")
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                    detail="Invalid request format sent to assistant.",
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Upstream chatbot endpoint not found at '{TARGET_ENDPOINT}'.",
+                )
+
+            elif response.status_code == 422:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid request payload sent to assistant.",
                 )
 
             elif response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
@@ -62,10 +76,10 @@ class ChatService:
                 )
 
             else:
-                print(f"\n[ChatService Error] Upstream returned status {response.status_code}: {response.text}\n")
+                logger.error(f"[ChatService Error] Upstream status {response.status_code}: {response.text}")
                 raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Upstream chatbot returned HTTP {response.status_code}: {response.text}",
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Upstream chatbot service returned HTTP {response.status_code}: {response.text}",
                 )
 
         except httpx.TimeoutException:
@@ -74,8 +88,8 @@ class ChatService:
                 detail="The assistant took too long to respond. Please try again shortly.",
             )
         except httpx.RequestError as exc:
-            print(f"\n[ChatService Connection Error] Failed to reach {CHAT_BOT_URL}: {exc}\n")
+            logger.error(f"[ChatService Connection Error] Failed to reach {TARGET_ENDPOINT}: {exc}")
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Cannot connect to Chatbot microservice at {CHAT_BOT_URL}. Error: {str(exc)}",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Cannot connect to Chatbot microservice at {TARGET_ENDPOINT}. Error: {str(exc)}",
             )
