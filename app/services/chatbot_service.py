@@ -19,7 +19,7 @@ TARGET_ENDPOINT = CHAT_BOT_URL if CHAT_BOT_URL.endswith("/chat") else f"{CHAT_BO
 
 # Granular HTTPX Timeout configuration allowing cold-start buffer for Render
 HTTPX_TIMEOUT = httpx.Timeout(
-    connect=30.0,  # 30s to establish TCP connection (allows Render cold-start)
+    connect=60.0,  # 30s to establish TCP connection (allows Render cold-start)
     read=90.0,     # 90s to read full AI response generated
     write=30.0,
     pool=30.0

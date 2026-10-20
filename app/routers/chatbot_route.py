@@ -17,11 +17,11 @@ async def chat_with_assistant(
 
     try:
         return await ChatService().send_message(user=user, payload=payload)
-    except Exception as e:
-        print("\n" + "=" * 20 + " CHATBOT ERROR TRACEBACK " + "=" * 20)
-        traceback.print_exc()
-        print("=" * 65 + "\n")
+    except HTTPException:
+        # Re-raise standard HTTP exceptions so their true status codes (504, 401, etc.) are preserved
+        raise
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Chatbot execution error: {str(e)}"
+            detail=f"Unexpected chatbot execution error: {str(exc)}",
         )
