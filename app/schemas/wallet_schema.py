@@ -46,8 +46,6 @@ class WithdrawalRequestSchema(BaseModel):
     amount: Decimal = Field(..., gt=0, description="Amount in NGN to withdraw")
     bank_code: str = Field(..., min_length=3, description="Paystack bank code")
     account_number: str = Field(..., min_length=10, max_length=10, description="10-digit NUBAN account number")
-    account_name: str = Field(..., min_length=2, description="Account holder name")
-
 
 class WithdrawalResponseSchema(BaseModel):
     status: str

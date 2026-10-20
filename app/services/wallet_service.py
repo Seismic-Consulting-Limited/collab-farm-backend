@@ -205,6 +205,7 @@ class WalletService:
         tx_result = await self.session.execute(query)
         return tx_result.scalars().all()
 
+    
     async def withdraw_funds(
         self, user: User, payload: WithdrawalRequestSchema
     ) -> dict:
@@ -222,12 +223,12 @@ class WalletService:
                 detail="Insufficient wallet balance for this withdrawal.",
             )
 
-        # 1. Resolve Account Number with Paystack
+        # 1. Derive verified account holder name directly from Paystack
         resolved_account = await resolve_account_number(
             account_number=payload.account_number,
             bank_code=payload.bank_code,
         )
-        verified_account_name = resolved_account.get("account_name", payload.account_name)
+        verified_account_name = resolved_account["account_name"]
 
         # 2. Create Transfer Recipient
         amount_in_kobo = int(withdrawal_amount * 100)
