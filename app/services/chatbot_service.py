@@ -11,10 +11,19 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# Upstream URL and Service Key configuration
 CHAT_BOT_URL = os.getenv("CHAT_BOT_URL", "https://collab-farm-ai-jymt.onrender.com/chat").rstrip("/")
 SERVICE_KEY = os.getenv("SERVICE_KEY") or os.getenv("CHAT_SERVICE_KEY") or os.getenv("CHAT_API_KEY")
 
 TARGET_ENDPOINT = CHAT_BOT_URL if CHAT_BOT_URL.endswith("/chat") else f"{CHAT_BOT_URL}/chat"
+
+# Granular HTTPX Timeout configuration allowing cold-start buffer for Render
+HTTPX_TIMEOUT = httpx.Timeout(
+    connect=30.0,  # 30s to establish TCP connection (allows Render cold-start)
+    read=90.0,     # 90s to read full AI response generated
+    write=30.0,
+    pool=30.0
+)
 
 
 class ChatService:
@@ -25,7 +34,6 @@ class ChatService:
                 detail="Chat assistant Service Key (SERVICE_KEY) is missing from environment configuration.",
             )
 
-        # Match exact headers requested by AI team
         headers = {
             "Content-Type": "application/json",
             "X-Service-Key": SERVICE_KEY,
@@ -37,7 +45,7 @@ class ChatService:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=HTTPX_TIMEOUT) as client:
                 response = await client.post(
                     TARGET_ENDPOINT,
                     headers=headers,
@@ -53,7 +61,7 @@ class ChatService:
                 logger.error(f"[ChatService 401] Upstream rejected Service Key starting with '{key_preview}'")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Upstream chatbot rejected the Service Key. Check SERVICE_KEY in .env.",
+                    detail="Upstream chatbot rejected the Service Key. Check SERVICE_KEY in environment variables.",
                 )
 
             elif response.status_code == status.HTTP_404_NOT_FOUND:
@@ -82,10 +90,16 @@ class ChatService:
                     detail=f"Upstream chatbot service returned HTTP {response.status_code}: {response.text}",
                 )
 
-        except httpx.TimeoutException:
+        except httpx.ConnectTimeout:
+            logger.warning(f"[ChatService ConnectTimeout] Render instance at {TARGET_ENDPOINT} is spinning up from cold-start.")
             raise HTTPException(
                 status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-                detail="The assistant took too long to respond. Please try again shortly.",
+                detail="The AI assistant service is spinning up from cold-start. Please send your request again in 20-30 seconds.",
+            )
+        except httpx.ReadTimeout:
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="The assistant took too long to generate a response. Please try again shortly.",
             )
         except httpx.RequestError as exc:
             logger.error(f"[ChatService Connection Error] Failed to reach {TARGET_ENDPOINT}: {exc}")
