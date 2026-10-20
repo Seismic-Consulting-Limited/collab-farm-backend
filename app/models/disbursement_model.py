@@ -6,7 +6,6 @@ from sqlalchemy import DateTime, Enum as SQLEnum, Float, ForeignKey, String, fun
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
-from app.models.farmer_model import Farmer
 
 
 class DisbursementStatus(str, enum.Enum):
@@ -21,6 +20,7 @@ class DisbursementStatus(str, enum.Enum):
 if TYPE_CHECKING:
     from app.models.package_model import Package
     from app.models.user_model import User
+    from app.models.farmer_model import Farmer
 
 
 class Disbursement(Base, TimestampMixin):
@@ -36,7 +36,7 @@ class Disbursement(Base, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     farmer_id: Mapped[uuid.UUID] = mapped_column(
-    UUID(as_uuid=True), ForeignKey("farmers.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("farmers.id", ondelete="CASCADE"), nullable=False
     )
     recorded_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -63,7 +63,7 @@ class Disbursement(Base, TimestampMixin):
         "User", foreign_keys=[cooperative_id]
     )
     farmer: Mapped["Farmer"] = relationship(
-    "Farmer", foreign_keys=[farmer_id]
+        "Farmer", foreign_keys=[farmer_id]
     )
     recorded_by: Mapped[Optional["User"]] = relationship(
         "User", foreign_keys=[recorded_by_id]

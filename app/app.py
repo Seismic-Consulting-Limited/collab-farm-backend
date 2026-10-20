@@ -33,6 +33,7 @@ from app.routers.investor_dashboard_route import (
 from app.routers.investors_investment_route import (
     router as investors_investment_router
 )
+from app.routers.settlement_route import router as settlement_router
 
 limiter = Limiter(
     key_func=get_remote_address
@@ -97,6 +98,7 @@ app.include_router(packages_router)
 app.include_router(farmer_router)
 app.include_router(cooperative_investment_router)
 app.include_router(disbursement_router)
+app.include_router(settlement_router)
 app.include_router(investor_dashboard_router)
 app.include_router(wallet_router)
 app.include_router(investors_investment_router)

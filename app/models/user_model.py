@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 from app.models.farmer_model import Farmer
 from datetime import datetime, timedelta, timezone
+from sqlalchemy.ext.hybrid import hybrid_property
 
 if TYPE_CHECKING:
     from app.models.profile_model import CooperativeProfile, GroupProfile, IndividualProfile
@@ -102,3 +103,11 @@ class User(SQLAlchemyBaseUserTableUUID, Base, TimestampMixin):
         back_populates="investor",
         cascade="all, delete-orphan",
     )
+
+    @hybrid_property
+    def full_name(self) -> str:
+        """Returns the user's full name, falling back to email if name is empty."""
+        first = self.first_name or ""
+        last = self.last_name or ""
+        combined = f"{first} {last}".strip()
+        return combined if combined else self.email

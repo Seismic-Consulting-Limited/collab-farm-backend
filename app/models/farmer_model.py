@@ -126,6 +126,11 @@ class Farmer(Base, TimestampMixin):
         if getattr(self, "updated_at", None):
             return self.updated_at.strftime("%m/%d/%Y, %I:%M %p")
         return None
+    
+    @hybrid_property
+    def farmer_code(self) -> str:
+        """Returns a formatted code derived from the farmer ID."""
+        return f"PKG-{str(self.id)[:5].upper()}"
 
 
 class Farm(Base, TimestampMixin):
