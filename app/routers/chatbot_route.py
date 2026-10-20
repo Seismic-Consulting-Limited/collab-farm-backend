@@ -14,10 +14,7 @@ async def chat_with_assistant(
     payload: ChatRequest,
     user: User = Depends(current_active_user),
 ):
-    """
-    Proxy endpoint for talking to the CollabFarm AI Assistant.
-    Requires an authenticated active user context.
-    """
+
     try:
         return await ChatService().send_message(user=user, payload=payload)
     except Exception as e:

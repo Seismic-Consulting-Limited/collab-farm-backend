@@ -11,9 +11,6 @@ load_dotenv()
 CHAT_BOT_URL = os.getenv("CHAT_BOT_URL", "https://collab-farm-ai.vercel.app/")
 CHAT_API_KEY = os.getenv("CHAT_API_KEY")
 
-# Compatibility fix for deprecated Starlette HTTP_422 constant
-HTTP_422_CODE = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", status.HTTP_422_UNPROCESSABLE_ENTITY)
-
 
 class ChatService:
     async def send_message(self, user: User, payload: ChatRequest) -> ChatResponse:
@@ -52,9 +49,9 @@ class ChatService:
                     detail="Invalid or missing chatbot API key.",
                 )
 
-            elif response.status_code == HTTP_422_CODE:
+            elif response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT:
                 raise HTTPException(
-                    status_code=HTTP_422_CODE,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail="Invalid request format sent to assistant.",
                 )
 
