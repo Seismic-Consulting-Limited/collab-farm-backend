@@ -28,7 +28,6 @@ async def get_settlement_metrics(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Returns top KPI summary metrics for the Settlements page."""
     return await SettlementService(session).get_metrics()
 
 
@@ -38,17 +37,20 @@ async def get_settlement_metrics(
     status_code=status.HTTP_200_OK,
 )
 async def list_settlements(
-    search: Optional[str] = Query(None, description="Search farmer, package title, or reference"),
-    package_type: Optional[str] = Query(None, description="Filter by package category"),
-    status: Optional[SettlementStatus] = Query(None, description="Filter by settlement status"),
-    start_date: Optional[datetime] = Query(None, description="Filter start date"),
+    search: Optional[str] = Query(
+        None, description="Search farmer, package title, or reference"),
+    package_type: Optional[str] = Query(
+        None, description="Filter by package category"),
+    status: Optional[SettlementStatus] = Query(
+        None, description="Filter by settlement status"),
+    start_date: Optional[datetime] = Query(
+        None, description="Filter start date"),
     end_date: Optional[datetime] = Query(None, description="Filter end date"),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Fetches paginated settlements list with search and filter controls."""
     items, total = await SettlementService(session).get_settlements(
         search=search,
         package_type=package_type,
@@ -76,11 +78,11 @@ async def get_settlement_detail(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Fetches detailed settlement record for the detail modal."""
     try:
         return await SettlementService(session).get_settlement_detail(settlement_id)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
 @router.patch(
@@ -93,9 +95,9 @@ async def update_settlement_status(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Updates settlement status (e.g. from Reviewing to Settled or Rejected)."""
     try:
         updated = await SettlementService(session).update_status(settlement_id, payload)
         return {"status": "success", "new_status": updated.status}
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(e))

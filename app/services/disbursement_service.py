@@ -17,16 +17,17 @@ from app.schemas.disbursement_schema import (
     DisbursementStatusUpdateSchema,
 )
 
+
 def _get_user_display_name(user: Optional[User]) -> str:
-        """Helper to safely construct full name from User model."""
-        if not user:
-            return "System Automated"
+    if not user:
+        return "System Automated"
 
-        first = getattr(user, "first_name", "") or ""
-        last = getattr(user, "last_name", "") or ""
-        full_name = f"{first} {last}".strip()
+    first = getattr(user, "first_name", "") or ""
+    last = getattr(user, "last_name", "") or ""
+    full_name = f"{first} {last}".strip()
 
-        return full_name if full_name else getattr(user, "email", "Admin User")
+    return full_name if full_name else getattr(user, "email", "Admin User")
+
 
 class DisbursementService:
     def __init__(self, session: AsyncSession):
@@ -41,7 +42,6 @@ class DisbursementService:
         amount: float,
         admin_user_id: Optional[uuid.UUID] = None,
     ) -> Disbursement:
-        """Automated trigger: Creates a Pending Disbursement record when a package is assigned to a farmer."""
         reference = f"DSB-{uuid.uuid4().hex[:10].upper()}"
 
         disbursement = Disbursement(
@@ -57,11 +57,11 @@ class DisbursementService:
         await session.commit()
         await session.refresh(disbursement)
         return disbursement
-    
+
     async def get_metrics(self, cooperative_id: uuid.UUID) -> DisbursementMetricsResponse:
-        """Calculates KPI summary metrics for the disbursements header cards."""
         now = datetime.now(timezone.utc)
-        first_day_this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        first_day_this_month = now.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0)
 
         # 1. Total Disbursed
         total_query = select(
@@ -120,7 +120,6 @@ class DisbursementService:
         page: int = 1,
         page_size: int = 10,
     ) -> Tuple[List[Disbursement], int]:
-        """Lists disbursements with filtering and pagination."""
         query = (
             select(Disbursement)
             .options(
@@ -143,7 +142,8 @@ class DisbursementService:
             )
 
         if package_type and package_type.strip():
-            query = query.where(Package.category.ilike(f"%{package_type.strip()}%"))
+            query = query.where(Package.category.ilike(
+                f"%{package_type.strip()}%"))
 
         if status:
             query = query.where(Disbursement.status == status)
@@ -157,7 +157,8 @@ class DisbursementService:
         total = (await self.session.execute(count_stmt)).scalar_one()
 
         offset = (page - 1) * page_size
-        query = query.order_by(Disbursement.created_at.desc()).offset(offset).limit(page_size)
+        query = query.order_by(Disbursement.created_at.desc()).offset(
+            offset).limit(page_size)
 
         result = await self.session.execute(query)
         return list(result.scalars().all()), total
@@ -165,7 +166,6 @@ class DisbursementService:
     async def get_disbursement_detail(
         self, disbursement_id: uuid.UUID, cooperative_id: uuid.UUID
     ) -> DisbursementDetailResponse:
-        """Retrieves a single disbursement record for modal display."""
         query = (
             select(Disbursement)
             .options(
@@ -210,7 +210,6 @@ class DisbursementService:
         payload: DisbursementStatusUpdateSchema,
         admin_user: User,
     ) -> Disbursement:
-        """Updates status and automatically creates/syncs a Settlement entry when status is marked DISBURSED."""
         query = select(Disbursement).where(Disbursement.id == disbursement_id)
         result = await self.session.execute(query)
         disbursement = result.scalars().first()

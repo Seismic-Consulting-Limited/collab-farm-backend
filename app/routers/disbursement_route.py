@@ -28,7 +28,6 @@ async def get_disbursement_metrics(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Returns top KPI summary metrics for Disbursements page."""
     return await DisbursementService(session).get_metrics(cooperative_id=user.id)
 
 
@@ -38,17 +37,20 @@ async def get_disbursement_metrics(
     status_code=status.HTTP_200_OK,
 )
 async def list_disbursements(
-    search: Optional[str] = Query(None, description="Search farmer, package, or transaction reference"),
-    package_type: Optional[str] = Query(None, description="Filter by package category"),
-    status: Optional[DisbursementStatus] = Query(None, description="Filter by status"),
-    start_date: Optional[datetime] = Query(None, description="Filter start date"),
+    search: Optional[str] = Query(
+        None, description="Search farmer, package, or transaction reference"),
+    package_type: Optional[str] = Query(
+        None, description="Filter by package category"),
+    status: Optional[DisbursementStatus] = Query(
+        None, description="Filter by status"),
+    start_date: Optional[datetime] = Query(
+        None, description="Filter start date"),
     end_date: Optional[datetime] = Query(None, description="Filter end date"),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Lists disbursements for the cooperative user with search and pagination."""
     items, total = await DisbursementService(session).get_disbursements(
         cooperative_id=user.id,
         search=search,
@@ -77,13 +79,13 @@ async def get_disbursement_detail(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Fetches single disbursement record detail for modal view."""
     try:
         return await DisbursementService(session).get_disbursement_detail(
             disbursement_id=disbursement_id, cooperative_id=user.id
         )
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
 @router.patch(
@@ -96,10 +98,7 @@ async def update_disbursement_status(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Edits disbursement status (e.g. PENDING -> REVIEWING -> DISBURSED / REJECTED).
 
-    When updated to DISBURSED, a matching Settlement record is automatically created/synced.
-    """
     try:
         updated = await DisbursementService(session).update_status(
             disbursement_id=disbursement_id, payload=payload, admin_user=user
@@ -110,4 +109,5 @@ async def update_disbursement_status(
             "new_status": updated.status,
         }
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(e))

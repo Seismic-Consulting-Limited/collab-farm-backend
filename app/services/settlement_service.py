@@ -32,7 +32,7 @@ class SettlementService:
     ) -> Settlement:
         """Automated trigger: Creates a Settlement tracking entry when funds are disbursed to a farmer."""
         reference = f"TX-{uuid.uuid4().hex[:10].upper()}"
-        
+
         settlement = Settlement(
             farmer_id=farmer_id,
             package_id=package_id,
@@ -47,23 +47,22 @@ class SettlementService:
         await session.commit()
         await session.refresh(settlement)
         return settlement
-    
+
     def _get_user_display_name(user: Optional[User]) -> str:
-            """Helper to safely construct full name from User model."""
-            if not user:
-                return "System Automated"
-            
-            first = getattr(user, "first_name", "") or ""
-            last = getattr(user, "last_name", "") or ""
-            full_name = f"{first} {last}".strip()
-            
-            return full_name if full_name else getattr(user, "email", "Admin User")
+        if not user:
+            return "System Automated"
+
+        first = getattr(user, "first_name", "") or ""
+        last = getattr(user, "last_name", "") or ""
+        full_name = f"{first} {last}".strip()
+
+        return full_name if full_name else getattr(user, "email", "Admin User")
 
     async def get_metrics(self) -> SettlementMetricsResponse:
-        """Calculates dashboard KPI metrics."""
         now = datetime.now(timezone.utc)
         thirty_days_ago = now - timedelta(days=30)
-        first_day_this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        first_day_this_month = now.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0)
 
         # 1. Total Settled
         total_settled_query = select(
@@ -73,7 +72,8 @@ class SettlementService:
 
         # 2. Pending Settlement Amount & Count
         pending_query = select(
-            func.coalesce(func.sum(Settlement.amount_settled), Decimal("0.00")),
+            func.coalesce(func.sum(Settlement.amount_settled),
+                          Decimal("0.00")),
             func.count(Settlement.id),
         ).where(Settlement.status == SettlementStatus.PENDING)
         pending_res = (await self.session.execute(pending_query)).one()
@@ -84,7 +84,8 @@ class SettlementService:
             func.coalesce(func.sum(Settlement.amount_settled), Decimal("0.00"))
         ).where(
             Settlement.created_at >= first_day_this_month,
-            Settlement.status.in_([SettlementStatus.SETTLED, SettlementStatus.DISBURSED])
+            Settlement.status.in_(
+                [SettlementStatus.SETTLED, SettlementStatus.DISBURSED])
         )
         this_month_amount = (await self.session.execute(this_month_query)).scalar_one()
 
@@ -112,7 +113,6 @@ class SettlementService:
         page: int = 1,
         page_size: int = 10,
     ) -> Tuple[List[Settlement], int]:
-        """Lists settlements with multi-parameter filtering and pagination."""
         query = (
             select(Settlement)
             .options(
@@ -134,7 +134,8 @@ class SettlementService:
             )
 
         if package_type and package_type.strip():
-            query = query.where(Package.category.ilike(f"%{package_type.strip()}%"))
+            query = query.where(Package.category.ilike(
+                f"%{package_type.strip()}%"))
 
         if status:
             query = query.where(Settlement.status == status)
@@ -150,7 +151,8 @@ class SettlementService:
 
         # Paginate results
         offset = (page - 1) * page_size
-        query = query.order_by(Settlement.created_at.desc()).offset(offset).limit(page_size)
+        query = query.order_by(Settlement.created_at.desc()).offset(
+            offset).limit(page_size)
 
         result = await self.session.execute(query)
         items = result.scalars().all()
@@ -158,7 +160,6 @@ class SettlementService:
         return list(items), total
 
     async def get_settlement_detail(self, settlement_id: uuid.UUID) -> SettlementDetailResponse:
-        """Retrieves single settlement detail modal information."""
         query = (
             select(Settlement)
             .options(
@@ -203,7 +204,6 @@ class SettlementService:
     async def update_status(
         self, settlement_id: uuid.UUID, payload: SettlementStatusUpdateSchema
     ) -> Settlement:
-        """Updates repayment status (e.g., when repayment is reviewed or completed)."""
         query = select(Settlement).where(Settlement.id == settlement_id)
         result = await self.session.execute(query)
         settlement = result.scalars().first()

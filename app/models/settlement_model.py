@@ -9,11 +9,11 @@ from app.models.base import Base
 
 
 class SettlementStatus(str, enum.Enum):
-    PENDING = "Pending"
-    REVIEWING = "Reviewing"
-    REJECTED = "Rejected"
-    DISBURSED = "Disbursed"
-    SETTLED = "Settled"
+    PENDING = "PENDING"
+    REVIEWING = "REVIEWING"
+    REJECTED = "REJECTED"
+    DISBURSED = "DISBURSED"
+    SETTLED = "SETTLED"
 
 
 class Settlement(Base):

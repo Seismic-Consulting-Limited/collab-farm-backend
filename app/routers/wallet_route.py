@@ -29,7 +29,6 @@ async def resolve_bank_account(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Verifies account number against Paystack before initiating a withdrawal."""
     return await WalletService(session).resolve_bank_account(
         user=user, payload=payload
     )
