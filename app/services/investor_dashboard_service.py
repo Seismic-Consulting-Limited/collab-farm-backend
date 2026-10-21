@@ -1,9 +1,10 @@
 import uuid
+from datetime import datetime
 from typing import List, Optional
+from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from fastapi import HTTPException, status
 
 from app.models.cooperative_investment_model import Investment, InvestmentStatus
 from app.models.package_model import Package
@@ -34,14 +35,15 @@ class InvestorDashboardService:
             "repayment_date",
             "end_date",
         ]
-        # 1. Check Investment attributes first
+
+        # 1. Check direct Investment attributes
         for attr in date_attrs:
             val = getattr(inv, attr, None)
             if val is not None:
                 return val
 
         # 2. Check Package attributes as fallback
-        if inv.package:
+        if getattr(inv, "package", None):
             for attr in date_attrs:
                 val = getattr(inv.package, attr, None)
                 if val is not None:
@@ -58,6 +60,31 @@ class InvestorDashboardService:
             if val is not None:
                 return val.value if hasattr(val, "value") else str(val)
         return "General"
+
+    def _get_roi_percentage(self, pkg: Optional[Package]) -> float:
+        """Safely extract ROI percentage from Package model variations."""
+        if not pkg:
+            return 0.0
+        for attr in ["roi_percentage", "expected_roi_percentage", "roi", "expected_roi"]:
+            val = getattr(pkg, attr, None)
+            if val is not None:
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    pass
+        return 0.0
+
+    def _get_expected_returns(self, inv: Investment, amount: float, roi_pct: float) -> float:
+        """Safely extract expected returns from Investment or compute from ROI."""
+        for attr in ["expected_returns", "expected_return", "total_return", "payout_amount"]:
+            val = getattr(inv, attr, None)
+            if val is not None:
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    pass
+        # Fallback dynamic calculation if not explicitly stored
+        return amount + (amount * (roi_pct / 100.0))
 
     def _extract_investor_names(self, user: User):
         """Defensively extract full_name and first_name from User or attached profiles."""
@@ -105,7 +132,6 @@ class InvestorDashboardService:
                 detail="User account not found.",
             )
 
-        # Handle Enum or string comparison for roles safely
         user_role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
         if user_role_str.upper() != "INVESTOR":
             raise HTTPException(
@@ -177,7 +203,7 @@ class InvestorDashboardService:
                 cooperative_name=inv.package.cooperative.cooperative_profile.cooperative_name
                 if inv.package and inv.package.cooperative and getattr(inv.package.cooperative, "cooperative_profile", None)
                 else "Cooperative",
-                amount=float(inv.amount),
+                amount=float(getattr(inv, "amount_invested", getattr(inv, "amount", 0.0)) or 0.0),
                 due_date=self._get_due_date(inv),
             )
             for inv in overdue_investments
@@ -198,7 +224,8 @@ class InvestorDashboardService:
         category_totals = {}
         for inv in active_investments:
             cat = self._get_farming_category(inv.package)
-            category_totals[cat] = category_totals.get(cat, 0.0) + float(inv.amount)
+            inv_amount = float(getattr(inv, "amount_invested", getattr(inv, "amount", 0.0)) or 0.0)
+            category_totals[cat] = category_totals.get(cat, 0.0) + inv_amount
 
         total_portfolio_value = sum(category_totals.values())
         category_breakdown: List[FarmingCategoryAllocationItem] = []
@@ -239,13 +266,13 @@ class InvestorDashboardService:
         recent_activities = []
 
         for inv in recent_inv_list:
-            roi_pct = (
-                float(inv.package.roi_percentage)
-                if inv.package and hasattr(inv.package, "roi_percentage")
-                else 0.0
+            inv_amount = float(
+                getattr(inv, "amount_invested", getattr(inv, "amount", 0.0)) or 0.0
             )
-            expected_returns = float(inv.amount) + (float(inv.amount) * (roi_pct / 100))
-            pkg_title = inv.package.title if inv.package else "Investment Package"
+            roi_pct = self._get_roi_percentage(inv.package)
+            expected_returns = self._get_expected_returns(inv, inv_amount, roi_pct)
+            
+            pkg_title = getattr(inv.package, "title", getattr(inv.package, "name", "Investment Package")) if inv.package else "Investment Package"
             status_str = inv.status.value if hasattr(inv.status, "value") else str(inv.status)
 
             recent_investments.append(
@@ -256,7 +283,7 @@ class InvestorDashboardService:
                     if inv.package and inv.package.cooperative and getattr(inv.package.cooperative, "cooperative_profile", None)
                     else "Cooperative",
                     farming_category=self._get_farming_category(inv.package),
-                    amount_invested=float(inv.amount),
+                    amount_invested=inv_amount,
                     expected_returns=expected_returns,
                     roi_percentage=roi_pct,
                     due_date=self._get_due_date(inv),
