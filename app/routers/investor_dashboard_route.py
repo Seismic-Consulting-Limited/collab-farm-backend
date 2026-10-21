@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.utils.dependencies import require_approved_investor
 from app.db import get_async_session
 from app.models.user_model import User
 from app.schemas.investor_dashboard_schema import InvestorDashboardResponse
 from app.services.investor_dashboard_service import InvestorDashboardService
 from app.users import current_active_user
 
-router = APIRouter(prefix="/investor", tags=["Investor Dashboard"])
+router = APIRouter(prefix="/investor", tags=["Investor Dashboard"], dependencies=[Depends(require_approved_investor)])
 
 # def verify_investor_access(user: User = Depends(current_active_user)) -> User:
 #     """Ensure the authenticated user is an investor, allowing all investor sub-types."""

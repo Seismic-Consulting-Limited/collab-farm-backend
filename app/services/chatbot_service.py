@@ -1,5 +1,6 @@
 import os
 import logging
+from typing import Optional
 import httpx
 from fastapi import HTTPException, status
 from dotenv import load_dotenv
@@ -19,15 +20,19 @@ TARGET_ENDPOINT = CHAT_BOT_URL if CHAT_BOT_URL.endswith("/chat") else f"{CHAT_BO
 
 # Granular HTTPX Timeout configuration allowing cold-start buffer for Render
 HTTPX_TIMEOUT = httpx.Timeout(
-    connect=200.0,  # 30s to establish TCP connection (allows Render cold-start)
-    read=100.0,     # 90s to read full AI response generated
+    connect=200.0,  # 200s to establish TCP connection (allows Render cold-start)
+    read=100.0,     # 100s to read full AI response generated
     write=30.0,
     pool=30.0
 )
 
 
 class ChatService:
-    async def send_message(self, user: User, payload: ChatRequest) -> ChatResponse:
+    async def send_message(
+        self, 
+        payload: ChatRequest, 
+        user: Optional[User] = None
+    ) -> ChatResponse:
         if not SERVICE_KEY:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -13,8 +13,9 @@ from app.schemas.investors_investment_schema import (
 )
 from app.services.investors_investment_service import InvestmentService
 from app.users import current_active_user
+from app.utils.dependencies import require_approved_investor
 
-router = APIRouter(prefix="/investments", tags=["Investors Investments"])
+router = APIRouter(prefix="/investments", tags=["Investors Investments"], dependencies=[Depends(require_approved_investor)])
 
 
 @router.post(

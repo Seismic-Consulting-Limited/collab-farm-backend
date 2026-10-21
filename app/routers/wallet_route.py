@@ -15,8 +15,9 @@ from app.schemas.wallet_schema import (
 )
 from app.services.wallet_service import WalletService
 from app.users import current_active_user
+from app.utils.dependencies import require_approved_investor
 
-router = APIRouter(prefix="/wallet", tags=["Investors Wallet"])
+router = APIRouter(prefix="/wallet", tags=["Investors Wallet"], dependencies=[Depends(require_approved_investor)])
 
 
 @router.post(

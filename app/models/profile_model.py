@@ -19,9 +19,6 @@ class IndividualProfile(Base, TimestampMixin):
         nullable=False,
     )
 
-    full_name: Mapped[str] = mapped_column(String, nullable=False)
-    email: Mapped[str] = mapped_column(String, nullable=False)
-    phone_number: Mapped[str] = mapped_column(String, nullable=False)
     id_number: Mapped[str] = mapped_column(String, nullable=False)
     id_file: Mapped[str] = mapped_column(String, nullable=False)
     nationality: Mapped[str] = mapped_column(String, nullable=False)

@@ -17,8 +17,9 @@ from app.schemas.package_schema import (
 )
 from app.services.package_service import PackageService
 from app.users import current_active_user
+from app.utils.dependencies import require_approved_investor
 
-router = APIRouter(prefix="/packages", tags=["Funding Packages"])
+router = APIRouter(prefix="/packages", tags=["Funding Packages"], dependencies=[Depends(require_approved_investor)])
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)

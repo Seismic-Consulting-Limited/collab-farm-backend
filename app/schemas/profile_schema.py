@@ -6,9 +6,6 @@ from app.schemas.user_schema import UserRole, InvestorType, VerificationStatus
 
 
 class IndividualProfileBase(BaseModel):
-    full_name: str
-    email: EmailStr
-    phone_number: str
     id_number: str
     id_file: str
     nationality: str
@@ -17,19 +14,21 @@ class IndividualProfileBase(BaseModel):
 class IndividualProfileCreate(IndividualProfileBase):
     pass
 
-
-class IndividualProfileUpdate(BaseModel):
-    full_name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    phone_number: Optional[str] = None
-    id_number: Optional[str] = None
-    id_file: Optional[str] = None
-    nationality: Optional[str] = None
+class IndividualProfileBase(BaseModel):
+    id_number: str
+    id_file: str
+    nationality: str
 
 
 class IndividualProfileRead(IndividualProfileBase):
     id: uuid.UUID
     user_id: uuid.UUID
+    
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: EmailStr
+    phone_number: Optional[str] = None
+
     created_at: datetime
     updated_at: datetime
 

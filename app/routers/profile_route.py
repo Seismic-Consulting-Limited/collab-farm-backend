@@ -13,20 +13,15 @@ router = APIRouter(prefix="/profile", tags=["Profiles"])
 
 @router.post("/individual-investor", status_code=status.HTTP_201_CREATED)
 async def submit_individual_profile(
-    full_name: str = Form(...),
-    email: str = Form(...),
-    phone_number: str = Form(...),
     id_number: str = Form(...),
     nationality: str = Form(...),
     id_file: UploadFile = File(...),
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
+
     return await ProfileService(db).submit_individual_profile(
         user=user,
-        full_name=full_name,
-        email=email,
-        phone_number=phone_number,
         id_number=id_number,
         nationality=nationality,
         id_file=id_file,
