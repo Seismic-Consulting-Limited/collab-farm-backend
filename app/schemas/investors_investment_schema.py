@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class InvestmentCreateRequest(BaseModel):
-    amount: float = Field(..., gt=0, description="Amount to invest in Naira")
+    pass
 
 
 class InvestmentResponse(BaseModel):
@@ -16,11 +16,11 @@ class InvestmentResponse(BaseModel):
     amount: float
     roi_percentage: float
     expected_returns: float
+    due_date: Optional[datetime] = None
     status: str
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
-
 
 class InvestmentSummaryMetrics(BaseModel):
     total_invested: float

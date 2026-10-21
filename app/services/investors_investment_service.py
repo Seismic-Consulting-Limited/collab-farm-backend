@@ -69,32 +69,13 @@ class InvestmentService:
             )
 
     async def process_investment(
-        self, user: User, package_id: uuid.UUID, data: InvestmentCreateRequest
+        self, user: User, package_id: uuid.UUID
     ) -> InvestmentResponse:
         # --- 0. Role-based check ---
         self._verify_investor_role(user)
         investor_id = user.id
 
-        # --- 1. Fetch & Validate Wallet ---
-        wallet_stmt = select(Wallet).where(Wallet.user_id == investor_id)
-        wallet_res = await self.db.execute(wallet_stmt)
-        wallet = wallet_res.unique().scalar_one_or_none()
-
-        if not wallet:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Wallet profile not found. Please setup your wallet.",
-            )
-
-        available_balance = float(wallet.available_balance or 0.0)
-
-        if available_balance < data.amount:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Insufficient wallet balance. Available: ₦{available_balance:,.2f}, Required: ₦{data.amount:,.2f}",
-            )
-
-        # --- 2. Fetch & Validate Package ---
+        # --- 1. Fetch & Validate Package ---
         package_stmt = select(Package).where(Package.id == package_id)
         package_res = await self.db.execute(package_stmt)
         package = package_res.unique().scalar_one_or_none()
@@ -111,6 +92,41 @@ class InvestmentService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="This investment package is currently closed for funding.",
+            )
+
+        # Derive fixed price directly from package using fund_amount as primary
+        raw_amount = (
+            getattr(package, "fund_amount", None)
+            or getattr(package, "unit_price", None)
+            or getattr(package, "price", None)
+            or getattr(package, "amount", None)
+            or 0.0
+        )
+        investment_amount = float(raw_amount)
+
+        if investment_amount <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Selected investment package has an invalid price configuration.",
+            )
+
+        # --- 2. Fetch & Validate Wallet ---
+        wallet_stmt = select(Wallet).where(Wallet.user_id == investor_id)
+        wallet_res = await self.db.execute(wallet_stmt)
+        wallet = wallet_res.unique().scalar_one_or_none()
+
+        if not wallet:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Wallet profile not found. Please setup your wallet.",
+            )
+
+        available_balance = float(wallet.available_balance or 0.0)
+
+        if available_balance < investment_amount:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Insufficient wallet balance. Available: ₦{available_balance:,.2f}, Required: ₦{investment_amount:,.2f}",
             )
 
         # --- 3. Check for Active or Pending Investment in THIS Package ---
@@ -133,20 +149,20 @@ class InvestmentService:
             )
 
         # --- 4. Update Wallet Balances (Available -> Locked) ---
-        wallet.available_balance = float(wallet.available_balance) - data.amount
-        wallet.locked_funds = float(wallet.locked_funds or 0.0) + data.amount
+        wallet.available_balance = float(wallet.available_balance) - investment_amount
+        wallet.locked_funds = float(wallet.locked_funds or 0.0) + investment_amount
 
         # --- 5. Extract Package Attributes ---
         pkg_title = getattr(package, "title", "Investment Package")
         roi_pct = self._get_package_roi(package)
-        expected_returns = data.amount + (data.amount * (roi_pct / 100))
+        expected_returns = investment_amount + (investment_amount * (roi_pct / 100))
         due_date = self._get_payback_date(package)
 
         # --- 6. Create Investment Record ---
         new_investment = Investment(
             investor_id=investor_id,
             package_id=package.id,
-            amount=data.amount,
+            amount=investment_amount,
             status=InvestmentStatus.ACTIVE,
         )
 
@@ -164,7 +180,7 @@ class InvestmentService:
         transaction = Transaction(
             wallet_id=wallet.id,
             reference=unique_ref,
-            amount=data.amount,
+            amount=investment_amount,
             description=f"Investment in package: {pkg_title}",
             type=TransactionType.INVESTMENT,
             status=TransactionStatus.COMPLETED,

@@ -32,7 +32,7 @@ async def create_package(
 
 @router.post(
     "/{package_id}/assign-farmer",
-    response_model=PackageFarmerDetail,
+    response_model=List[PackageFarmerDetail],
     status_code=status.HTTP_201_CREATED,
 )
 async def assign_farmer_to_package(
@@ -41,7 +41,8 @@ async def assign_farmer_to_package(
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    return await PackageService(db).assign_farmer(
+
+    return await PackageService(db).assign_farmers(
         user=user, package_id=package_id, payload=payload
     )
 

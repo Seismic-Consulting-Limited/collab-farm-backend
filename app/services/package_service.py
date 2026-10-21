@@ -49,42 +49,72 @@ class PackageService:
         await self.db.refresh(package)
         return package
 
-    async def assign_farmer(
-            self, user: User, package_id: uuid.UUID, payload: AssignFarmerSchema
-        ) -> PackageFarmer:
-            # 1. Verify Package Ownership
-            result = await self.db.execute(select(Package).where(Package.id == package_id))
-            package = result.scalars().first()
+    async def assign_farmers(
+        self, user: User, package_id: uuid.UUID, payload: AssignFarmerSchema
+    ) -> List[PackageFarmer]:
+        # 1. Verify Package Ownership
+        result = await self.db.execute(select(Package).where(Package.id == package_id))
+        package = result.scalars().first()
 
-            if not package or package.cooperative_id != user.id:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Package not found or unauthorized.",
-                )
+        if not package or package.cooperative_id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Package not found or unauthorized.",
+            )
 
-            # 2. Fetch Farmer Profile
-            farmer_record = await self.db.get(Farmer, payload.farmer_id)
-            if not farmer_record:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Farmer profile with ID '{payload.farmer_id}' was not found.",
-                )
+        # 2. Fetch Farmer Profiles in Batch
+        unique_farmer_ids = list(set(payload.farmer_ids))
+        farmers_stmt = select(Farmer).where(Farmer.id.in_(unique_farmer_ids))
+        farmers_res = await self.db.execute(farmers_stmt)
+        farmers = list(farmers_res.scalars().all())
 
+        if not farmers:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="None of the specified farmer profiles were found.",
+            )
+
+        farmer_map = {farmer.id: farmer for farmer in farmers}
+        found_farmer_ids = list(farmer_map.keys())
+
+        # 3. Filter Out Farmers Already Assigned to This Package
+        existing_stmt = select(PackageFarmer.farmer_id).where(
+            PackageFarmer.package_id == package_id,
+            PackageFarmer.farmer_id.in_(found_farmer_ids),
+        )
+        existing_res = await self.db.execute(existing_stmt)
+        already_assigned_ids = set(existing_res.scalars().all())
+
+        new_farmer_ids = [fid for fid in found_farmer_ids if fid not in already_assigned_ids]
+
+        if not new_farmer_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All selected farmers are already assigned to this package.",
+            )
+
+        # 4. Create PackageFarmer & Disbursement Records for Each Farmer
+        new_assignment_ids = []
+
+        for farmer_id in new_farmer_ids:
+            farmer_record = farmer_map[farmer_id]
             farmer_user_id = getattr(farmer_record, "user_id", farmer_record.id)
 
-            # 3. Create PackageFarmer Assignment
+            # Create assignment entry
             assignment = PackageFarmer(
                 package_id=package_id,
-                farmer_id=payload.farmer_id,
+                farmer_id=farmer_id,
                 allocated_amount=package.fund_amount,
                 tenure_months=package.tenure_months,
                 expected_roi=package.expected_roi,
                 status=FarmerPackageStatus.PENDING,
             )
             self.db.add(assignment)
+            await self.db.flush()  # Populates assignment.id
+            new_assignment_ids.append(assignment.id)
 
-            # 4. Auto-generate Disbursement Record
-            tx_ref = f"DSB-{str(package_id)[:4].upper()}-{str(payload.farmer_id)[:4].upper()}-{uuid.uuid4().hex[:6].upper()}"
+            # Auto-generate unique disbursement reference per farmer
+            tx_ref = f"DSB-{str(package_id)[:4].upper()}-{str(farmer_id)[:4].upper()}-{uuid.uuid4().hex[:6].upper()}"
 
             disbursement = Disbursement(
                 package_id=package_id,
@@ -98,20 +128,20 @@ class PackageService:
             )
             self.db.add(disbursement)
 
-            # 5. Commit Transaction
-            await self.db.commit()
+        # 5. Commit Bulk Database Operations
+        await self.db.commit()
 
-            # 6. Eager-load relationships to avoid MissingGreenlet during FastAPI response serialization
-            query = (
-                select(PackageFarmer)
-                .options(
-                    selectinload(PackageFarmer.farmer),
-                    selectinload(PackageFarmer.package),
-                )
-                .where(PackageFarmer.id == assignment.id)
+        # 6. Eager-load relationships for response serialization
+        query = (
+            select(PackageFarmer)
+            .options(
+                selectinload(PackageFarmer.farmer),
+                selectinload(PackageFarmer.package),
             )
-            res = await self.db.execute(query)
-            return res.scalars().first()
+            .where(PackageFarmer.id.in_(new_assignment_ids))
+        )
+        res = await self.db.execute(query)
+        return list(res.scalars().all())
     
     async def get_all_packages(
         self,
@@ -309,9 +339,9 @@ class PackageService:
         target_amount = update_data.get("fund_amount", package.fund_amount)
 
         min_amounts = {
-            PackageType.STARTER: 1000000.00,
-            PackageType.GROWTH: 3000000.00,
-            PackageType.COMMERCIAL: 5000000.00,
+            PackageType.STARTER: 100.00,
+            PackageType.GROWTH: 300.00,
+            PackageType.COMMERCIAL: 500.00,
         }
         min_required = min_amounts.get(target_type, 0.0)
         if target_amount < min_required:

@@ -27,9 +27,9 @@ class PackageCreate(BaseModel):
     @model_validator(mode="after")
     def validate_fund_amount_by_type(self):
         min_amounts = {
-            PackageType.STARTER: 1000000.00,
-            PackageType.GROWTH: 3000000.0,
-            PackageType.COMMERCIAL: 5000000.0,
+            PackageType.STARTER: 100.00,
+            PackageType.GROWTH: 300.0,
+            PackageType.COMMERCIAL: 500.0,
         }
         min_required = min_amounts.get(self.package_type, 0.0)
         if self.fund_amount < min_required:
@@ -39,7 +39,11 @@ class PackageCreate(BaseModel):
         return self
 
 class AssignFarmerSchema(BaseModel):
-    farmer_id: uuid.UUID
+    farmer_ids: List[uuid.UUID] = Field(
+        ...,
+        min_length=1,
+        description="List of farmer UUIDs to assign to this package",
+    )
 
 class PackageFarmerDetail(BaseModel):
     id: uuid.UUID
@@ -49,7 +53,7 @@ class PackageFarmerDetail(BaseModel):
     tenure_months: int
     expected_roi: float
     name: str
-    photo: Optional[str]
+    photo: Optional[str] = None
     progress_percentage: float = 0.0
     status: FarmerPackageStatus
 

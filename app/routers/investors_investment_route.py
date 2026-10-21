@@ -24,16 +24,12 @@ router = APIRouter(prefix="/investments", tags=["Investors Investments"])
 )
 async def create_investment(
     package_id: uuid.UUID,
-    payload: InvestmentCreateRequest,
+    payload: Optional[InvestmentCreateRequest] = None,
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    """
-    Deducts funds from investor wallet and creates a new investment entry for the specified package.
-    Rejects the request if the investor already has an active or pending investment in the same package.
-    """
     return await InvestmentService(db).process_investment(
-        user=user, package_id=package_id, data=payload
+        user=user, package_id=package_id
     )
 
 
