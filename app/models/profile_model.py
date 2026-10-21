@@ -4,7 +4,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 from app.models.user_model import User
-
+from typing import Optional
 
 class IndividualProfile(Base, TimestampMixin):
     __tablename__ = "individual_profiles"
@@ -22,6 +22,7 @@ class IndividualProfile(Base, TimestampMixin):
     id_number: Mapped[str] = mapped_column(String, nullable=False)
     id_file: Mapped[str] = mapped_column(String, nullable=False)
     nationality: Mapped[str] = mapped_column(String, nullable=False)
+    address: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     user: Mapped["User"] = relationship(
         "User", back_populates="individual_profile"

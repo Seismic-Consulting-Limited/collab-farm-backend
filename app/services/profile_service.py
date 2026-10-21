@@ -7,7 +7,7 @@ from app.utils.cloudinary import upload_kyc_document
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 import uuid
-
+from typing import Optional
 
 class ProfileService:
     def __init__(self, db: AsyncSession):
@@ -19,6 +19,7 @@ class ProfileService:
         id_number: str,
         nationality: str,
         id_file: UploadFile,
+        address: Optional[str] = None,
     ) -> dict:
         if user.role == UserRole.ADMIN:
             raise HTTPException(
@@ -45,12 +46,14 @@ class ProfileService:
                 user_id=user.id,
                 id_number=id_number,
                 nationality=nationality,
+                address=address,
                 id_file=id_file_res["secure_url"],
             )
             self.db.add(profile)
         else:
             profile.id_number = id_number
             profile.nationality = nationality
+            profile.address = address
             profile.id_file = id_file_res["secure_url"]
 
         # 3. Update User Verification Attributes
@@ -214,6 +217,7 @@ class ProfileService:
                 id_number=ip.id_number,
                 id_file=ip.id_file,
                 nationality=ip.nationality,
+                address=ip.address,
                 created_at=ip.created_at,
                 updated_at=ip.updated_at,
             )

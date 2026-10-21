@@ -9,15 +9,11 @@ class IndividualProfileBase(BaseModel):
     id_number: str
     id_file: str
     nationality: str
+    address: Optional[str] = None
 
 
 class IndividualProfileCreate(IndividualProfileBase):
     pass
-
-class IndividualProfileBase(BaseModel):
-    id_number: str
-    id_file: str
-    nationality: str
 
 
 class IndividualProfileRead(IndividualProfileBase):

@@ -7,6 +7,7 @@ from app.schemas.profile_schema import UserProfile
 from app.users import current_active_user, get_user_manager, UserManager
 from app.services.auth_service import AuthService
 from app.schemas.user_schema import ChangePassword
+from typing import Optional
 
 router = APIRouter(prefix="/profile", tags=["Profiles"])
 
@@ -16,6 +17,7 @@ async def submit_individual_profile(
     id_number: str = Form(...),
     nationality: str = Form(...),
     id_file: UploadFile = File(...),
+    address: Optional[str] = Form(None),
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
@@ -25,6 +27,7 @@ async def submit_individual_profile(
         id_number=id_number,
         nationality=nationality,
         id_file=id_file,
+        address=address
     )
 
 
