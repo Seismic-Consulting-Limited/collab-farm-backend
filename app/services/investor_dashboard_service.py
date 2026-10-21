@@ -25,15 +25,28 @@ class InvestorDashboardService:
         self.db = db
 
     def _get_due_date(self, inv: Investment):
-        """Safely extract due date from Investment or Package."""
-        for attr in ["due_date", "maturity_date", "repayment_date", "end_date"]:
+        """Safely extract due date from Investment or linked Package."""
+        date_attrs = [
+            "due_date",
+            "expected_payback_date",
+            "payback_date",
+            "maturity_date",
+            "repayment_date",
+            "end_date",
+        ]
+        # 1. Check Investment attributes first
+        for attr in date_attrs:
             val = getattr(inv, attr, None)
             if val is not None:
                 return val
-            if inv.package:
+
+        # 2. Check Package attributes as fallback
+        if inv.package:
+            for attr in date_attrs:
                 val = getattr(inv.package, attr, None)
                 if val is not None:
                     return val
+
         return None
 
     def _get_farming_category(self, pkg: Optional[Package]) -> str:
@@ -53,8 +66,7 @@ class InvestorDashboardService:
             or getattr(user, "full_name", None)
             or getattr(user, "name", None)
             or (
-                f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip(
-                )
+                f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip()
                 if getattr(user, "first_name", None)
                 else None
             )
@@ -62,8 +74,7 @@ class InvestorDashboardService:
 
         first_name = getattr(user, "first_name", None)
 
-        profile = getattr(user, "investor_profile",
-                          None) or getattr(user, "profile", None)
+        profile = getattr(user, "investor_profile", None) or getattr(user, "profile", None)
         if profile and not full_name:
             full_name = (
                 getattr(profile, "company_name", None)
@@ -95,8 +106,7 @@ class InvestorDashboardService:
             )
 
         # Handle Enum or string comparison for roles safely
-        user_role_str = user.role.value if hasattr(
-            user.role, "value") else str(user.role)
+        user_role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
         if user_role_str.upper() != "INVESTOR":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -112,12 +122,10 @@ class InvestorDashboardService:
 
         if wallet:
             available_balance = float(
-                getattr(wallet, "available_balance", getattr(
-                    wallet, "balance", getattr(wallet, "amount", 0.0))) or 0.0
+                getattr(wallet, "available_balance", getattr(wallet, "balance", getattr(wallet, "amount", 0.0))) or 0.0
             )
             locked_funds = float(
-                getattr(wallet, "locked_balance", getattr(
-                    wallet, "locked_funds", 0.0)) or 0.0
+                getattr(wallet, "locked_balance", getattr(wallet, "locked_funds", 0.0)) or 0.0
             )
         else:
             available_balance = 0.0
@@ -126,8 +134,7 @@ class InvestorDashboardService:
         # --- 2. Investment Metrics (Disbursed & Overdue Count) ---
         disbursed_stmt = select(func.coalesce(func.sum(Investment.amount), 0.0)).where(
             Investment.investor_id == investor_id,
-            Investment.status.in_(
-                [InvestmentStatus.ACTIVE, InvestmentStatus.REPAID, InvestmentStatus.OVERDUE]),
+            Investment.status.in_([InvestmentStatus.ACTIVE, InvestmentStatus.REPAID, InvestmentStatus.OVERDUE]),
         )
         disbursed_funds = float((await self.db.execute(disbursed_stmt)).scalar() or 0.0)
 
@@ -150,7 +157,8 @@ class InvestorDashboardService:
             .options(
                 selectinload(Investment.package),
                 selectinload(Investment.package).selectinload(
-                    Package.cooperative).selectinload(User.cooperative_profile),
+                    Package.cooperative
+                ).selectinload(User.cooperative_profile),
             )
             .where(
                 Investment.investor_id == investor_id,
@@ -181,8 +189,7 @@ class InvestorDashboardService:
             .options(selectinload(Investment.package))
             .where(
                 Investment.investor_id == investor_id,
-                Investment.status.in_(
-                    [InvestmentStatus.ACTIVE, InvestmentStatus.OVERDUE]),
+                Investment.status.in_([InvestmentStatus.ACTIVE, InvestmentStatus.OVERDUE]),
             )
         )
         active_inv_res = await self.db.execute(active_inv_stmt)
@@ -191,8 +198,7 @@ class InvestorDashboardService:
         category_totals = {}
         for inv in active_investments:
             cat = self._get_farming_category(inv.package)
-            category_totals[cat] = category_totals.get(
-                cat, 0.0) + float(inv.amount)
+            category_totals[cat] = category_totals.get(cat, 0.0) + float(inv.amount)
 
         total_portfolio_value = sum(category_totals.values())
         category_breakdown: List[FarmingCategoryAllocationItem] = []
@@ -219,7 +225,8 @@ class InvestorDashboardService:
             .options(
                 selectinload(Investment.package),
                 selectinload(Investment.package).selectinload(
-                    Package.cooperative).selectinload(User.cooperative_profile),
+                    Package.cooperative
+                ).selectinload(User.cooperative_profile),
             )
             .where(Investment.investor_id == investor_id)
             .order_by(Investment.created_at.desc())
@@ -232,13 +239,14 @@ class InvestorDashboardService:
         recent_activities = []
 
         for inv in recent_inv_list:
-            roi_pct = float(inv.package.roi_percentage) if inv.package and hasattr(
-                inv.package, "roi_percentage") else 0.0
-            expected_returns = float(inv.amount) + \
-                (float(inv.amount) * (roi_pct / 100))
+            roi_pct = (
+                float(inv.package.roi_percentage)
+                if inv.package and hasattr(inv.package, "roi_percentage")
+                else 0.0
+            )
+            expected_returns = float(inv.amount) + (float(inv.amount) * (roi_pct / 100))
             pkg_title = inv.package.title if inv.package else "Investment Package"
-            status_str = inv.status.value if hasattr(
-                inv.status, "value") else str(inv.status)
+            status_str = inv.status.value if hasattr(inv.status, "value") else str(inv.status)
 
             recent_investments.append(
                 RecentInvestmentItem(
@@ -266,11 +274,9 @@ class InvestorDashboardService:
             recent_activities.append(
                 RecentActivityItem(
                     id=inv.id,
-                    title=activity_title_map.get(
-                        status_str.upper(), "Investment Update"),
+                    title=activity_title_map.get(status_str.upper(), "Investment Update"),
                     description=pkg_title,
-                    timestamp=getattr(inv, "updated_at",
-                                      None) or inv.created_at,
+                    timestamp=getattr(inv, "updated_at", None) or inv.created_at,
                     activity_type=status_str.lower(),
                 )
             )
