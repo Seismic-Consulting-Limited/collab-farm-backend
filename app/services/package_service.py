@@ -1,4 +1,6 @@
+import calendar
 import uuid
+from datetime import date
 from typing import List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -29,6 +31,14 @@ from app.schemas.package_schema import (
     PackageUpdate,
     WhatsIncludedItem,
 )
+
+
+def _add_months(value: date, months: int) -> date:
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
 
 
 class PackageService:
@@ -250,6 +260,7 @@ class PackageService:
                 selectinload(Package.cooperative).selectinload(User.cooperative_profile),
                 selectinload(Package.package_farmers).selectinload(PackageFarmer.farmer),
                 selectinload(Package.investments).selectinload(Investment.investor),
+                selectinload(Package.disbursements),
             )
             .where(Package.id == package_id)
         )
@@ -294,7 +305,21 @@ class PackageService:
             investors = []
         else:
             assigned_farmers = []
+            payout_dates = {}
+            for disbursement in package.disbursements:
+                if disbursement.status != DisbursementStatus.DISBURSED:
+                    continue
+                disbursed_at = disbursement.disbursement_date
+                if not disbursed_at:
+                    continue
+                payout_date = disbursed_at.date()
+                existing_date = payout_dates.get(disbursement.farmer_id)
+                if existing_date is None or payout_date > existing_date:
+                    payout_dates[disbursement.farmer_id] = payout_date
+
             for pf in package.package_farmers:
+                tenure_months = int(pf.tenure_months or package.tenure_months or 0)
+                payout_date = payout_dates.get(pf.farmer_id)
                 farmer_obj = getattr(pf, "farmer", None)
                 farmer_name = (
                     getattr(pf, "name", None)
@@ -319,13 +344,17 @@ class PackageService:
                         name=farmer_name,
                         location=location,
                         allocated_amount=float(pf.allocated_amount or 0.0),
-                        tenure_months=int(pf.tenure_months or package.tenure_months or 0),
+                        tenure_months=tenure_months,
                         expected_roi=float(pf.expected_roi or expected_roi),
                         photo=getattr(pf, "photo", getattr(farmer_obj, "photo", None)),
                         progress_stage=getattr(pf, "progress_stage", "Growing"),
                         progress_percentage=float(getattr(pf, "progress_percentage", 0.0)),
-                        payout_date=getattr(pf, "payout_date", None),
-                        payback_date=getattr(pf, "payback_date", package.expected_payback_date),
+                        payout_date=payout_date,
+                        payback_date=(
+                            _add_months(payout_date, tenure_months)
+                            if payout_date
+                            else getattr(pf, "payback_date", package.expected_payback_date)
+                        ),
                         status=pf.status,
                     )
                 )
