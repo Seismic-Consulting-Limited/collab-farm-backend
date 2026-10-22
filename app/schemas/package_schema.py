@@ -108,7 +108,7 @@ class PackageDetailRead(BaseModel):
     expected_roi: float
     cooperative_share: float
     expected_settlement_amount: float = 0.0
-    whats_included: List[WhatsIncludedItem] = []  # <-- Change from List[str] to List[WhatsIncludedItem]
+    whats_included: List[WhatsIncludedItem] = Field(default_factory=list)
     farmers_count: int = 0
     investors_count: int = 0
     status: PackageStatus
@@ -147,7 +147,7 @@ class PackageRead(BaseModel):
     expected_roi: float
     cooperative_share: float
     expected_settlement_amount: float = 0.0
-    whats_included: List[WhatsIncludedItem] = []  # <-- Change from List[str] to List[WhatsIncludedItem]
+    whats_included: List[WhatsIncludedItem] = Field(default_factory=list)
     status: PackageStatus
     created_at: datetime
 
@@ -173,4 +173,5 @@ class PackageUpdate(BaseModel):
     expected_payback_date: Optional[date] = None
     expected_roi: Optional[float] = None
     cooperative_share: Optional[float] = None
+    whats_included: Optional[List[WhatsIncludedItem]] = None
     status: Optional[PackageStatus] = None

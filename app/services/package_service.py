@@ -233,6 +233,7 @@ class PackageService:
                     expected_roi=roi_val,
                     cooperative_share=float(pkg.cooperative_share or 0.0),
                     expected_settlement_amount=settlement_amt,
+                    whats_included=self._parse_whats_included(pkg.whats_included),
                     status=pkg.status,
                     created_at=pkg.created_at,
                 )
@@ -351,13 +352,6 @@ class PackageService:
                         payback_due_date=getattr(inv, "payback_due_date", package.expected_payback_date),
                     )
                 )
-
-        whats_included = getattr(package, "whats_included", None) or [
-            "Seeds",
-            "Fertilizer (basic)",
-            "Land Preparation",
-            "Basic tools and inputs",
-        ]
 
         coop_name = (
             package.cooperative.cooperative_profile.cooperative_name
