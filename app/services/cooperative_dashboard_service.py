@@ -10,6 +10,7 @@ from app.models.package_model import Package, PackageFarmer
 from app.models.profile_model import CooperativeProfile
 from app.models.user_model import User, UserRole
 from app.models.cooperative_investment_model import Investment, InvestmentStatus
+from app.models.settlement_model import Settlement, SettlementStatus
 from app.schemas.cooperative_dashboard_schema import (
     CooperativeDashboardResponse,
     FarmingCategoryBreakdown,
@@ -187,6 +188,49 @@ class DashboardService:
             pending=investment_status_map.get(InvestmentStatus.PENDING, 0),
         )
 
+        # 8. Cumulative ROI from packages with at least one settled settlement.
+        settled_package_res = await self.db.execute(
+            select(
+                Package.id,
+                Package.cooperative_share,
+                func.min(Settlement.date_settled),
+            )
+            .join(Settlement, Settlement.package_id == Package.id)
+            .where(
+                Package.cooperative_id == user.id,
+                Settlement.status == SettlementStatus.SETTLED,
+                Settlement.date_settled.is_not(None),
+            )
+            .group_by(Package.id, Package.cooperative_share)
+        )
+        roi_by_month = {}
+        for _package_id, cooperative_share, settled_at in settled_package_res.all():
+            month_key = (settled_at.year, settled_at.month)
+            roi_by_month[month_key] = roi_by_month.get(month_key, 0.0) + float(cooperative_share or 0.0)
+
+        now = datetime.now(timezone.utc)
+        current_month_index = now.year * 12 + now.month - 1
+        chart_months = []
+        for offset in range(5, -1, -1):
+            month_index = current_month_index - offset
+            year, zero_based_month = divmod(month_index, 12)
+            month = zero_based_month + 1
+            chart_months.append((year, month))
+
+        cumulative_roi = sum(
+            roi for (year, month), roi in roi_by_month.items()
+            if (year, month) < chart_months[0]
+        )
+        accumulative_roi = []
+        for year, month in chart_months:
+            cumulative_roi += roi_by_month.get((year, month), 0.0)
+            accumulative_roi.append(
+                MonthlyRoiPoint(
+                    month=datetime(year, month, 1).strftime("%b '%y"),
+                    roi_percentage=round(cumulative_roi, 2),
+                )
+            )
+
         return CooperativeDashboardResponse(
             greeting_name=user.first_name or "Partner",
             cooperative_name=coop_name,
@@ -212,14 +256,7 @@ class DashboardService:
                     subtext="↑ across active packages.",
                 ),
             ),
-            accumulative_roi=[
-                MonthlyRoiPoint(month="Dec '25", roi_percentage=0.0),
-                MonthlyRoiPoint(month="Jan '26", roi_percentage=0.0),
-                MonthlyRoiPoint(month="Feb '26", roi_percentage=0.0),
-                MonthlyRoiPoint(month="Mar '26", roi_percentage=0.0),
-                MonthlyRoiPoint(month="Apr '26", roi_percentage=0.0),
-                MonthlyRoiPoint(month="May '26", roi_percentage=0.0),
-            ],
+            accumulative_roi=accumulative_roi,
             farmers_by_farming_category=farming_category_breakdown,
             recent_farmers=recent_farmers,
             investment_summary=inv_summary,
