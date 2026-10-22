@@ -6,10 +6,10 @@ from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.farmer_model import Farmer, Farm, WRSStatus
-from app.models.package_model import Package, PackageFarmer, PackageStatus
+from app.models.package_model import Package, PackageFarmer
 from app.models.profile_model import CooperativeProfile
 from app.models.user_model import User, UserRole
-from app.models.cooperative_investment_model import Investment
+from app.models.cooperative_investment_model import Investment, InvestmentStatus
 from app.schemas.cooperative_dashboard_schema import (
     CooperativeDashboardResponse,
     FarmingCategoryBreakdown,
@@ -171,19 +171,20 @@ class DashboardService:
                 )
             )
 
-        # 7. Package Summary
-        pkg_statuses = await self.db.execute(
-            select(Package.status, func.count(Package.id))
+        # 7. Investment Summary
+        investment_statuses = await self.db.execute(
+            select(Investment.status, func.count(Investment.id))
+            .join(Package, Investment.package_id == Package.id)
             .where(Package.cooperative_id == user.id)
-            .group_by(Package.status)
+            .group_by(Investment.status)
         )
-        status_map = dict(pkg_statuses.all())
+        investment_status_map = dict(investment_statuses.all())
 
         inv_summary = InvestmentStatusSummary(
-            active=status_map.get(PackageStatus.ACTIVE, 0),
-            repaid=status_map.get(PackageStatus.COMPLETED, 0),
-            overdue=0,
-            pending=status_map.get(PackageStatus.PENDING, 0),
+            active=investment_status_map.get(InvestmentStatus.ACTIVE, 0),
+            repaid=investment_status_map.get(InvestmentStatus.REPAID, 0),
+            overdue=investment_status_map.get(InvestmentStatus.OVERDUE, 0),
+            pending=investment_status_map.get(InvestmentStatus.PENDING, 0),
         )
 
         return CooperativeDashboardResponse(
