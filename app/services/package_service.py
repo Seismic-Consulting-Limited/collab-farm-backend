@@ -96,10 +96,16 @@ class PackageService:
         result = await self.db.execute(select(Package).where(Package.id == package_id))
         package = result.scalars().first()
 
-        if not package or package.cooperative_id != user.id:
+        if not package:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Package not found or unauthorized.",
+                detail="Investment package not found.",
+            )
+
+        if package.cooperative_id != user.id and user.role != UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not authorized to assign farmers to this package.",
             )
 
         # 2. Fetch Farmer Profiles in Batch
