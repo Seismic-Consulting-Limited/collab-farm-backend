@@ -60,8 +60,9 @@ app.add_exception_handler(
 origins = [
     "http://localhost:5173",
     "http://localhost:5174",
-    "https://collabfarm-investors.vercel.app"
-    "https://collabfarm-cooperative.vercel.app"
+    "https://collabfarm-investors.vercel.app",
+    "https://collabfarm-cooperative.vercel.app",
+    "*"
 ]
 
 app.add_middleware(
