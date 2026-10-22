@@ -27,6 +27,7 @@ from app.schemas.package_schema import (
     PackageInvestorResponse,
     PackageRead,
     PackageUpdate,
+    WhatsIncludedItem,
 )
 
 
@@ -39,6 +40,28 @@ class PackageService:
         if not amount or amount <= 0:
             return 0.0
         return round(amount + (amount * (roi_pct / 100.0)), 2)
+    
+    def _parse_whats_included(self, raw_data: Optional[list]) -> List[WhatsIncludedItem]:
+        """Parse raw stored JSON, dicts, or strings into List[WhatsIncludedItem]."""
+        if not raw_data:
+            return [
+                WhatsIncludedItem(item="Seeds", amount=0.0),
+                WhatsIncludedItem(item="Fertilizer (basic)", amount=0.0),
+                WhatsIncludedItem(item="Land Preparation", amount=0.0),
+                WhatsIncludedItem(item="Basic tools and inputs", amount=0.0),
+            ]
+
+        parsed: List[WhatsIncludedItem] = []
+        for entry in raw_data:
+            if isinstance(entry, WhatsIncludedItem):
+                parsed.append(entry)
+            elif isinstance(entry, dict):
+                item_name = entry.get("item") or entry.get("name") or entry.get("input") or "Item"
+                amt = float(entry.get("amount", 0.0) or 0.0)
+                parsed.append(WhatsIncludedItem(item=item_name, amount=amt))
+            elif isinstance(entry, str):
+                parsed.append(WhatsIncludedItem(item=entry, amount=0.0))
+        return parsed
 
     async def create_package(self, user: User, payload: PackageCreate) -> Package:
         if user.role != UserRole.COOPERATIVE:
@@ -342,6 +365,8 @@ class PackageService:
             else getattr(package, "cooperative_name", None)
         )
 
+        whats_included = self._parse_whats_included(getattr(package, "whats_included", None))
+
         return PackageDetailRead(
             id=package.id,
             cooperative_id=package.cooperative_id,
@@ -357,7 +382,7 @@ class PackageService:
             expected_roi=expected_roi,
             cooperative_share=float(package.cooperative_share or 0.0),
             expected_settlement_amount=expected_settlement_amount,
-            whats_included=whats_included,
+            whats_included=whats_included,  # <-- Pass parsed items list
             farmers_count=farmers_count,
             investors_count=investors_count,
             status=package.status,

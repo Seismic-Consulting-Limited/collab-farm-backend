@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 from enum import Enum
 from typing import TYPE_CHECKING, List, Optional
-from sqlalchemy import Date, Enum as SQLEnum, Float, ForeignKey, Integer, Numeric, String
+from sqlalchemy import Date, Enum as SQLEnum, Float, ForeignKey, Integer, Numeric, String, Column, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
@@ -89,6 +89,7 @@ class Package(Base, TimestampMixin):
     disbursements: Mapped[List["Disbursement"]] = relationship(
         "Disbursement", back_populates="package", cascade="all, delete-orphan"
     )
+    whats_included = Column(JSON, nullable=True, default=list)
 
 
 class PackageFarmer(Base, TimestampMixin):

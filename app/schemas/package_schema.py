@@ -12,6 +12,14 @@ from app.models.package_model import (
 from app.models.user_model import InvestorType
 
 
+
+class WhatsIncludedItem(BaseModel):
+    item: str = Field(..., description="Name of item/input, e.g. Fertilizer")
+    amount: Optional[float] = Field(default=0.0, description="Cost or allocated amount in Naira")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class PackageCreate(BaseModel):
     title: str
     package_type: PackageType
@@ -23,6 +31,7 @@ class PackageCreate(BaseModel):
     expected_payback_date: date
     expected_roi: float = Field(..., description="Percentage ROI e.g. 15.0")
     cooperative_share: float = Field(..., description="Cooperative cut % e.g. 5.0")
+    whats_included: Optional[List[WhatsIncludedItem]] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_fund_amount_by_type(self):
@@ -87,6 +96,7 @@ class PackageFinancialSummary(BaseModel):
 class PackageDetailRead(BaseModel):
     id: uuid.UUID
     cooperative_id: uuid.UUID
+    cooperative_name: Optional[str] = None
     title: str
     package_type: PackageType
     category: PackageCategory
@@ -98,7 +108,7 @@ class PackageDetailRead(BaseModel):
     expected_roi: float
     cooperative_share: float
     expected_settlement_amount: float = 0.0
-    whats_included: List[str] = []
+    whats_included: List[WhatsIncludedItem] = []  # <-- Change from List[str] to List[WhatsIncludedItem]
     farmers_count: int = 0
     investors_count: int = 0
     status: PackageStatus
@@ -137,6 +147,7 @@ class PackageRead(BaseModel):
     expected_roi: float
     cooperative_share: float
     expected_settlement_amount: float = 0.0
+    whats_included: List[WhatsIncludedItem] = []  # <-- Change from List[str] to List[WhatsIncludedItem]
     status: PackageStatus
     created_at: datetime
 
