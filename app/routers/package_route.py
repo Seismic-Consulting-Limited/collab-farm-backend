@@ -10,26 +10,25 @@ from app.schemas.package_schema import (
     AssignFarmerSchema,
     PackageCreate,
     PackageDetailRead,
+    PackageFarmerDetail,
     PackageInvestorResponse,
     PackageRead,
     PackageUpdate,
-    PackageFarmerDetail
 )
 from app.services.package_service import PackageService
 from app.users import current_active_user
-from app.utils.dependencies import require_approved_investor
 
-router = APIRouter(prefix="/packages", tags=["Funding Packages"], dependencies=[Depends(require_approved_investor)])
+router = APIRouter(prefix="/packages", tags=["Funding Packages"])
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=PackageDetailRead, status_code=status.HTTP_201_CREATED)
 async def create_package(
     payload: PackageCreate,
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    return await PackageService(db).create_package(user=user, payload=payload)
-
+    package = await PackageService(db).create_package(user=user, payload=payload)
+    return await PackageService(db).get_package_details(user=user, package_id=package.id)
 
 @router.post(
     "/{package_id}/assign-farmer",
@@ -42,7 +41,6 @@ async def assign_farmer_to_package(
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-
     return await PackageService(db).assign_farmers(
         user=user, package_id=package_id, payload=payload
     )
@@ -95,6 +93,7 @@ async def update_package(
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    return await PackageService(db).update_package(
+    updated_pkg = await PackageService(db).update_package(
         user=user, package_id=package_id, payload=payload
     )
+    return await PackageService(db).get_package_by_id(updated_pkg.id)

@@ -38,6 +38,7 @@ class PackageCreate(BaseModel):
             )
         return self
 
+
 class AssignFarmerSchema(BaseModel):
     farmer_ids: List[uuid.UUID] = Field(
         ...,
@@ -45,16 +46,21 @@ class AssignFarmerSchema(BaseModel):
         description="List of farmer UUIDs to assign to this package",
     )
 
+
 class PackageFarmerDetail(BaseModel):
     id: uuid.UUID
     package_id: uuid.UUID
     farmer_id: uuid.UUID
+    name: str
+    location: Optional[str] = None
     allocated_amount: float
     tenure_months: int
     expected_roi: float
-    name: str
     photo: Optional[str] = None
+    progress_stage: Optional[str] = None
     progress_percentage: float = 0.0
+    payout_date: Optional[date] = None
+    payback_date: Optional[date] = None
     status: FarmerPackageStatus
 
     model_config = ConfigDict(from_attributes=True)
@@ -63,7 +69,9 @@ class PackageFarmerDetail(BaseModel):
 class PackageInvestorDetail(BaseModel):
     id: uuid.UUID
     investor_id: uuid.UUID
+    investor_name: Optional[str] = None
     amount: float
+    expected_settlement: float = 0.0
     invested_at: datetime = Field(..., alias="created_at")
     payback_due_date: Optional[date] = None
 
@@ -89,6 +97,10 @@ class PackageDetailRead(BaseModel):
     expected_payback_date: date
     expected_roi: float
     cooperative_share: float
+    expected_settlement_amount: float = 0.0
+    whats_included: List[str] = []
+    farmers_count: int = 0
+    investors_count: int = 0
     status: PackageStatus
     financial_summary: PackageFinancialSummary
     assigned_farmers: List[PackageFarmerDetail] = []
@@ -113,7 +125,7 @@ class PackageInvestorResponse(BaseModel):
 class PackageRead(BaseModel):
     id: uuid.UUID
     cooperative_id: uuid.UUID
-    cooperative_name: Optional[str] = None  
+    cooperative_name: Optional[str] = None
     title: str
     package_type: PackageType
     category: PackageCategory
@@ -124,6 +136,7 @@ class PackageRead(BaseModel):
     expected_payback_date: date
     expected_roi: float
     cooperative_share: float
+    expected_settlement_amount: float = 0.0
     status: PackageStatus
     created_at: datetime
 

@@ -4,8 +4,10 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from app.models.disbursement_model import Disbursement, DisbursementStatus
+
 from app.models.cooperative_investment_model import Investment
+from app.models.disbursement_model import Disbursement, DisbursementStatus
+from app.models.farmer_model import Farmer
 from app.models.package_model import (
     FarmerPackageStatus,
     Package,
@@ -14,7 +16,6 @@ from app.models.package_model import (
     PackageStatus,
     PackageType,
 )
-from app.models.farmer_model import Farmer
 from app.models.user_model import User, UserRole
 from app.schemas.package_schema import (
     AssignFarmerSchema,
@@ -32,6 +33,12 @@ from app.schemas.package_schema import (
 class PackageService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    def _calculate_settlement(self, amount: float, roi_pct: float) -> float:
+        """Calculate expected settlement amount dynamically in the service layer."""
+        if not amount or amount <= 0:
+            return 0.0
+        return round(amount + (amount * (roi_pct / 100.0)), 2)
 
     async def create_package(self, user: User, payload: PackageCreate) -> Package:
         if user.role != UserRole.COOPERATIVE:
@@ -142,7 +149,7 @@ class PackageService:
         )
         res = await self.db.execute(query)
         return list(res.scalars().all())
-    
+
     async def get_all_packages(
         self,
         user: User,
@@ -151,51 +158,74 @@ class PackageService:
         status_filter: Optional[PackageStatus] = None,
         cooperative_id: Optional[uuid.UUID] = None,
     ) -> List[PackageRead]:
-            query = (
-                select(Package)
-                .options(
-                    selectinload(Package.cooperative).selectinload(User.cooperative_profile)
+        query = (
+            select(Package)
+            .options(
+                selectinload(Package.cooperative).selectinload(User.cooperative_profile)
+            )
+        )
+
+        if user.role == UserRole.COOPERATIVE:
+            query = query.where(Package.cooperative_id == user.id)
+        elif cooperative_id:
+            query = query.where(Package.cooperative_id == cooperative_id)
+
+        if category:
+            query = query.where(Package.category == category)
+        if package_type:
+            query = query.where(Package.package_type == package_type)
+        if status_filter:
+            query = query.where(Package.status == status_filter)
+
+        query = query.order_by(Package.created_at.desc())
+
+        result = await self.db.execute(query)
+        packages = result.scalars().all()
+
+        package_reads = []
+        for pkg in packages:
+            fund_amt = float(pkg.fund_amount or 0.0)
+            roi_val = float(pkg.expected_roi or 0.0)
+            settlement_amt = self._calculate_settlement(fund_amt, roi_val)
+
+            coop_name = (
+                pkg.cooperative.cooperative_profile.cooperative_name
+                if pkg.cooperative and getattr(pkg.cooperative, "cooperative_profile", None)
+                else getattr(pkg, "cooperative_name", None)
+            )
+
+            package_reads.append(
+                PackageRead(
+                    id=pkg.id,
+                    cooperative_id=pkg.cooperative_id,
+                    cooperative_name=coop_name,
+                    title=pkg.title,
+                    package_type=pkg.package_type,
+                    category=pkg.category,
+                    fund_amount=fund_amt,
+                    farming_cycle=pkg.farming_cycle,
+                    short_description=pkg.short_description,
+                    tenure_months=pkg.tenure_months,
+                    expected_payback_date=pkg.expected_payback_date,
+                    expected_roi=roi_val,
+                    cooperative_share=float(pkg.cooperative_share or 0.0),
+                    expected_settlement_amount=settlement_amt,
+                    status=pkg.status,
+                    created_at=pkg.created_at,
                 )
             )
 
-            if user.role == UserRole.COOPERATIVE:
-                query = query.where(Package.cooperative_id == user.id)
-            elif cooperative_id:
-                query = query.where(Package.cooperative_id == cooperative_id)
-
-            if category:
-                query = query.where(Package.category == category)
-            if package_type:
-                query = query.where(Package.package_type == package_type)
-            if status_filter:
-                query = query.where(Package.status == status_filter)
-
-            query = query.order_by(Package.created_at.desc())
-
-            result = await self.db.execute(query)
-            packages = result.scalars().all()
-
-            return [
-                PackageRead(
-                    **PackageRead.model_validate(pkg).model_dump(exclude={"cooperative_name"}),
-                    cooperative_name=(
-                        pkg.cooperative.cooperative_profile.cooperative_name
-                        if pkg.cooperative and pkg.cooperative.cooperative_profile
-                        else None
-                    )
-                )
-                for pkg in packages
-        ]
+        return package_reads
 
     async def get_package_details(
-    self, user: User, package_id: uuid.UUID
-) -> PackageDetailRead:
+        self, user: User, package_id: uuid.UUID
+    ) -> PackageDetailRead:
         query = (
             select(Package)
             .options(
                 selectinload(Package.cooperative).selectinload(User.cooperative_profile),
                 selectinload(Package.package_farmers).selectinload(PackageFarmer.farmer),
-                selectinload(Package.investments),
+                selectinload(Package.investments).selectinload(Investment.investor),
             )
             .where(Package.id == package_id)
         )
@@ -214,60 +244,135 @@ class PackageService:
                 detail="Access denied. You can only view packages created by your cooperative.",
             )
 
-        total_invested = sum(float(inv.amount) for inv in package.investments)
+        # 1. Financial & Settlement Calculations
+        fund_amount = float(package.fund_amount or 0.0)
+        expected_roi = float(package.expected_roi or 0.0)
+        expected_settlement_amount = self._calculate_settlement(fund_amount, expected_roi)
+
+        total_invested = sum(float(inv.amount or 0.0) for inv in package.investments)
         total_disbursed = sum(
-            float(pf.allocated_amount)
+            float(pf.allocated_amount or 0.0)
             for pf in package.package_farmers
             if pf.status == FarmerPackageStatus.DISBURSED
         )
         remaining_balance = total_invested - total_disbursed
 
-        # Safe evaluation for user role
+        farmers_count = len(package.package_farmers)
+        investors_count = len(package.investments)
+
+        # 2. Role-based List Filtering & Detailed Mapping
         user_role_str = (
             user.role.value if hasattr(user.role, "value") else str(user.role)
         ).upper()
 
-        # Hide assigned_farmers and investors if user is an INVESTOR
         if user_role_str == "INVESTOR" or user.role == UserRole.INVESTOR:
             assigned_farmers = []
             investors = []
         else:
-            assigned_farmers = [
-                PackageFarmerDetail.model_validate(pf) for pf in package.package_farmers
-            ]
-            investors = [
-                PackageInvestorDetail.model_validate(inv) for inv in package.investments
-            ]
+            assigned_farmers = []
+            for pf in package.package_farmers:
+                farmer_obj = getattr(pf, "farmer", None)
+                farmer_name = (
+                    getattr(pf, "name", None)
+                    or (
+                        f"{getattr(farmer_obj, 'first_name', '')} {getattr(farmer_obj, 'last_name', '')}".strip()
+                        if farmer_obj
+                        else None
+                    )
+                    or getattr(farmer_obj, "full_name", "Farmer")
+                )
+                location = (
+                    getattr(pf, "location", None)
+                    or getattr(farmer_obj, "state", None)
+                    or getattr(farmer_obj, "address", "N/A")
+                )
+
+                assigned_farmers.append(
+                    PackageFarmerDetail(
+                        id=pf.id,
+                        package_id=pf.package_id,
+                        farmer_id=pf.farmer_id,
+                        name=farmer_name,
+                        location=location,
+                        allocated_amount=float(pf.allocated_amount or 0.0),
+                        tenure_months=int(pf.tenure_months or package.tenure_months or 0),
+                        expected_roi=float(pf.expected_roi or expected_roi),
+                        photo=getattr(pf, "photo", getattr(farmer_obj, "photo", None)),
+                        progress_stage=getattr(pf, "progress_stage", "Growing"),
+                        progress_percentage=float(getattr(pf, "progress_percentage", 0.0)),
+                        payout_date=getattr(pf, "payout_date", None),
+                        payback_date=getattr(pf, "payback_date", package.expected_payback_date),
+                        status=pf.status,
+                    )
+                )
+
+            investors = []
+            for inv in package.investments:
+                inv_amount = float(inv.amount or 0.0)
+                inv_settlement = self._calculate_settlement(inv_amount, expected_roi)
+                inv_user = getattr(inv, "investor", None)
+                inv_name = (
+                    getattr(inv_user, "full_name", None)
+                    or f"{getattr(inv_user, 'first_name', '')} {getattr(inv_user, 'last_name', '')}".strip()
+                    or getattr(inv_user, "email", "Investor")
+                ) if inv_user else "Investor"
+
+                investors.append(
+                    PackageInvestorDetail(
+                        id=inv.id,
+                        investor_id=inv.investor_id,
+                        investor_name=inv_name,
+                        amount=inv_amount,
+                        expected_settlement=inv_settlement,
+                        created_at=inv.created_at,
+                        payback_due_date=getattr(inv, "payback_due_date", package.expected_payback_date),
+                    )
+                )
+
+        whats_included = getattr(package, "whats_included", None) or [
+            "Seeds",
+            "Fertilizer (basic)",
+            "Land Preparation",
+            "Basic tools and inputs",
+        ]
+
+        coop_name = (
+            package.cooperative.cooperative_profile.cooperative_name
+            if package.cooperative and getattr(package.cooperative, "cooperative_profile", None)
+            else getattr(package, "cooperative_name", None)
+        )
 
         return PackageDetailRead(
             id=package.id,
             cooperative_id=package.cooperative_id,
-            cooperative_name=getattr(package, "cooperative_name", None),
+            cooperative_name=coop_name,
             title=package.title,
             package_type=package.package_type,
             category=package.category,
             farming_cycle=package.farming_cycle,
             short_description=package.short_description,
-            fund_amount=float(package.fund_amount),
+            fund_amount=fund_amount,
             tenure_months=package.tenure_months,
             expected_payback_date=package.expected_payback_date,
-            expected_roi=float(package.expected_roi),
-            cooperative_share=float(package.cooperative_share),
+            expected_roi=expected_roi,
+            cooperative_share=float(package.cooperative_share or 0.0),
+            expected_settlement_amount=expected_settlement_amount,
+            whats_included=whats_included,
+            farmers_count=farmers_count,
+            investors_count=investors_count,
             status=package.status,
             financial_summary=PackageFinancialSummary(
                 total_money_invested=total_invested,
                 total_disbursed_to_farmers=total_disbursed,
                 remaining_balance=remaining_balance,
             ),
-            assigned_farmers=assigned_farmers,  # Pass filtered list
-            investors=investors,                # Pass filtered list
+            assigned_farmers=assigned_farmers,
+            investors=investors,
         )
-
 
     async def get_package_investors(
         self, user: User, package_id: uuid.UUID
     ) -> List[PackageInvestorResponse]:
-        # Restrict investors from accessing the package investors endpoint directly
         user_role_str = (
             user.role.value if hasattr(user.role, "value") else str(user.role)
         ).upper()
