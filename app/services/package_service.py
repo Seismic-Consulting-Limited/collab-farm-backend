@@ -54,12 +54,7 @@ class PackageService:
     def _parse_whats_included(self, raw_data: Optional[list]) -> List[WhatsIncludedItem]:
         """Parse raw stored JSON, dicts, or strings into List[WhatsIncludedItem]."""
         if not raw_data:
-            return [
-                WhatsIncludedItem(item="Seeds", amount=0.0),
-                WhatsIncludedItem(item="Fertilizer (basic)", amount=0.0),
-                WhatsIncludedItem(item="Land Preparation", amount=0.0),
-                WhatsIncludedItem(item="Basic tools and inputs", amount=0.0),
-            ]
+            return []
 
         parsed: List[WhatsIncludedItem] = []
         for entry in raw_data:
