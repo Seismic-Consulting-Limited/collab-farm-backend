@@ -65,6 +65,7 @@ class PackageFundingProgress(BaseModel):
     farmers_supported: int
     total_farm_size_ha: float
     locations_count: int
+    farm_locations: List[str] = Field(default_factory=list)
 
 
 class SettlementInformation(BaseModel):

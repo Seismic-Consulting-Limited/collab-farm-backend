@@ -1,3 +1,4 @@
+import calendar
 import uuid
 from datetime import datetime, time, timezone
 from typing import Optional, List
@@ -7,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.cooperative_investment_model import Investment, InvestmentStatus
-from app.models.package_model import Package
+from app.models.disbursement_model import DisbursementStatus
+from app.models.farmer_model import Farmer
+from app.models.package_model import Package, PackageFarmer
 from app.models.user_model import User, UserRole
 from app.models.wallet_model import (
     Transaction,
@@ -50,6 +53,14 @@ class InvestmentService:
                 return payback_date
             return datetime.combine(payback_date, time.min).replace(tzinfo=timezone.utc)
         return None
+
+    @staticmethod
+    def _add_months(value: datetime, months: int) -> datetime:
+        month_index = value.month - 1 + months
+        year = value.year + month_index // 12
+        month = month_index % 12 + 1
+        day = min(value.day, calendar.monthrange(year, month)[1])
+        return value.replace(year=year, month=month, day=day)
 
     def _get_farming_category(self, package: Optional[Package]) -> str:
         """Extract category from package."""
@@ -248,7 +259,11 @@ class InvestmentService:
             pkg_type_str = pkg_type.value if hasattr(pkg_type, "value") else str(pkg_type)
 
             roi_pct = self._get_package_roi(pkg) if pkg else 0.0
-            expected_settlement = float(inv.amount) + (float(inv.amount) * (roi_pct / 100))
+            cooperative_share_pct = (
+                float(getattr(pkg, "cooperative_share", 0.0) or 0.0) if pkg else 0.0
+            )
+            investor_roi_pct = max(roi_pct - cooperative_share_pct, 0.0)
+            expected_settlement = float(inv.amount) * (1 + investor_roi_pct / 100)
 
             inv_status = inv.status.value if hasattr(inv.status, "value") else str(inv.status)
             if inv_status.upper() in ["ACTIVE", "PENDING"]:
@@ -303,7 +318,13 @@ class InvestmentService:
 
         stmt = (
             select(Investment)
-            .options(selectinload(Investment.package))
+            .options(
+                selectinload(Investment.package)
+                .selectinload(Package.package_farmers)
+                .selectinload(PackageFarmer.farmer)
+                .selectinload(Farmer.farms),
+                selectinload(Investment.package).selectinload(Package.disbursements),
+            )
             .where(
                 Investment.id == investment_id,
                 Investment.investor_id == investor_id,
@@ -332,12 +353,37 @@ class InvestmentService:
         amount_raised = float(getattr(pkg, "amount_raised", 0.0) or 0.0) if pkg else 0.0
         progress_pct = min(round((amount_raised / target_amount) * 100, 1), 100.0) if target_amount > 0 else 0.0
 
-        assigned_farmers = getattr(pkg, "assigned_farmers", []) if pkg else []
-        farmers_count = len(assigned_farmers) if isinstance(assigned_farmers, list) else 0
+        package_farmers = getattr(pkg, "package_farmers", []) if pkg else []
+        farmers_count = len(package_farmers)
 
         roi_pct = self._get_package_roi(pkg) if pkg else 0.0
-        expected_settlement = float(investment.amount) + (float(investment.amount) * (roi_pct / 100))
-        due_date = self._get_payback_date(pkg) if pkg else None
+        cooperative_share_pct = float(getattr(pkg, "cooperative_share", 0.0) or 0.0) if pkg else 0.0
+        investor_roi_pct = max(roi_pct - cooperative_share_pct, 0.0)
+        expected_settlement = float(investment.amount) * (1 + investor_roi_pct / 100)
+
+        disbursed_dates = [
+            disbursement.disbursement_date
+            for disbursement in (getattr(pkg, "disbursements", []) if pkg else [])
+            if disbursement.status == DisbursementStatus.DISBURSED
+            and disbursement.disbursement_date is not None
+        ]
+        if disbursed_dates:
+            latest_disbursed_at = max(disbursed_dates)
+            tenure_months = int(getattr(pkg, "tenure_months", 0) or 0)
+            due_date = self._add_months(latest_disbursed_at, tenure_months)
+        else:
+            due_date = self._get_payback_date(pkg) if pkg else None
+
+        total_farm_size = 0.0
+        farm_locations = set()
+        for package_farmer in package_farmers:
+            farmer = getattr(package_farmer, "farmer", None)
+            farms = getattr(farmer, "farms", []) if farmer else []
+            for farm in farms:
+                total_farm_size += float(farm.size_in_hectares or 0.0)
+                if farm.location:
+                    farm_locations.add(farm.location.strip())
+        farm_locations_list = sorted(farm_locations)
 
         inv_status_str = (
             investment.status.value
@@ -364,8 +410,9 @@ class InvestmentService:
                 amount_raised=amount_raised,
                 target_amount=target_amount,
                 farmers_supported=farmers_count,
-                total_farm_size_ha=getattr(pkg, "total_farm_size", 18.5),
-                locations_count=getattr(pkg, "locations_count", 3),
+                total_farm_size_ha=total_farm_size,
+                locations_count=len(farm_locations_list),
+                farm_locations=farm_locations_list,
             ),
             settlement_info=SettlementInformation(
                 expected_settlement_date=due_date,
