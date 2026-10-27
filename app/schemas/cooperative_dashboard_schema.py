@@ -13,6 +13,7 @@ class KpiCard(BaseModel):
 class DashboardKpis(BaseModel):
     total_farmers: KpiCard
     verified_farmers: KpiCard
+    total_packages_created: KpiCard
     total_farm_area: KpiCard
     total_funding_received: KpiCard
 

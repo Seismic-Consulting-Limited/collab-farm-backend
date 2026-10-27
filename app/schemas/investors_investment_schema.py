@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,8 +36,8 @@ class InvestorInvestmentListItem(BaseModel):
     category: str
     package_type: str
     amount_invested: float
-    funding_progress_percentage: float
     expected_settlement: float
+    expected_settlement_date: Optional[date] = None
     date_invested: datetime
     status: str
 

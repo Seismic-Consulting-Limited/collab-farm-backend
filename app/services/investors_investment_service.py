@@ -175,6 +175,7 @@ class InvestmentService:
             package_id=package.id,
             amount=investment_amount,
             status=InvestmentStatus.ACTIVE,
+            payment_method="Wallet",
         )
 
         for attr in ["payback_due_date", "due_date", "maturity_date", "repayment_date"]:
@@ -187,6 +188,7 @@ class InvestmentService:
 
         # --- 7. Create Transaction History Record ---
         unique_ref = f"INV-{str(new_investment.id)[:8]}-{int(datetime.now(timezone.utc).timestamp())}"
+        new_investment.transaction_reference = unique_ref
 
         transaction = Transaction(
             wallet_id=wallet.id,
@@ -269,9 +271,7 @@ class InvestmentService:
             if inv_status.upper() in ["ACTIVE", "PENDING"]:
                 pending_settlement += expected_settlement
 
-            fund_amount = float(getattr(pkg, "fund_amount", 1.0) or 1.0) if pkg else 1.0
-            amount_raised = float(getattr(pkg, "amount_raised", 0.0) or 0.0) if pkg else 0.0
-            progress_pct = min(round((amount_raised / fund_amount) * 100, 1), 100.0)
+            expected_settlement_date = self._get_payback_date(pkg) if pkg else None
 
             if status_filter and status_filter.upper() != "ALL":
                 if inv_status.upper() != status_filter.upper():
@@ -289,8 +289,8 @@ class InvestmentService:
                     category=self._get_farming_category(pkg),
                     package_type=pkg_type_str,
                     amount_invested=float(inv.amount),
-                    funding_progress_percentage=progress_pct,
                     expected_settlement=expected_settlement,
+                    expected_settlement_date=expected_settlement_date,
                     date_invested=inv.created_at,
                     status=inv_status.capitalize(),
                 )
@@ -400,7 +400,9 @@ class InvestmentService:
             invested_date_str=investment.created_at.strftime("%d %b %Y, %I:%M %p"),
             investment_details=YourInvestmentDetails(
                 amount_invested=float(investment.amount),
-                investment_id_code=f"#{float(investment.amount):,.0f}",
+                # UUID4 primary keys are random and unique; the integer form is
+                # a stable numeric code for this investment record.
+                investment_id_code=str(investment.id.int),
                 date_invested=investment.created_at,
                 transaction_reference=tx_ref,
                 status=inv_status_str.capitalize(),

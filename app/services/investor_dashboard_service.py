@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime, timezone
 from typing import List, Optional
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -83,8 +83,20 @@ class InvestorDashboardService:
                     return float(val)
                 except (ValueError, TypeError):
                     pass
-        # Fallback dynamic calculation if not explicitly stored
-        return amount + (amount * (roi_pct / 100.0))
+        # The investor receives the package ROI after the cooperative share.
+        cooperative_share = float(
+            getattr(getattr(inv, "package", None), "cooperative_share", 0.0) or 0.0
+        )
+        investor_roi = max(roi_pct - cooperative_share, 0.0)
+        return amount * (1 + investor_roi / 100.0)
+
+    def _is_past_due(self, inv: Investment, today: date) -> bool:
+        if inv.status == InvestmentStatus.REPAID:
+            return False
+        due_date = self._get_due_date(inv)
+        if isinstance(due_date, datetime):
+            due_date = due_date.date()
+        return due_date is not None and due_date < today
 
     def _extract_investor_names(self, user: User):
         """Defensively extract full_name and first_name from User or attached profiles."""
@@ -157,44 +169,61 @@ class InvestorDashboardService:
             available_balance = 0.0
             locked_funds = 0.0
 
-        # --- 2. Investment Metrics (Disbursed & Overdue Count) ---
-        disbursed_stmt = select(func.coalesce(func.sum(Investment.amount), 0.0)).where(
-            Investment.investor_id == investor_id,
-            Investment.status.in_([InvestmentStatus.ACTIVE, InvestmentStatus.REPAID, InvestmentStatus.OVERDUE]),
+        # --- 2. Investment Metrics ---
+        investments_stmt = (
+            select(Investment)
+            .options(
+                selectinload(Investment.package)
+                .selectinload(Package.cooperative)
+                .selectinload(User.cooperative_profile)
+            )
+            .where(Investment.investor_id == investor_id)
+            .order_by(Investment.created_at.desc())
         )
-        disbursed_funds = float((await self.db.execute(disbursed_stmt)).scalar() or 0.0)
+        investments_res = await self.db.execute(investments_stmt)
+        investor_investments = investments_res.unique().scalars().all()
+        today = datetime.now(timezone.utc).date()
 
-        overdue_count_stmt = select(func.count(Investment.id)).where(
-            Investment.investor_id == investor_id,
-            Investment.status == InvestmentStatus.OVERDUE,
+        total_invested_amount = sum(float(inv.amount or 0.0) for inv in investor_investments)
+        unsettled_investments = [
+            inv for inv in investor_investments if inv.status != InvestmentStatus.REPAID
+        ]
+        total_expected_returns = sum(
+            self._get_expected_returns(
+                inv,
+                float(inv.amount or 0.0),
+                self._get_roi_percentage(inv.package),
+            )
+            for inv in unsettled_investments
         )
-        overdue_returns_count = (await self.db.execute(overdue_count_stmt)).scalar() or 0
+        overdue_investments = [
+            inv for inv in unsettled_investments if self._is_past_due(inv, today)
+        ]
+        active_investments_count = sum(
+            1
+            for inv in investor_investments
+            if inv.status == InvestmentStatus.ACTIVE
+            and not self._is_past_due(inv, today)
+        )
+        overdue_investments_count = len(overdue_investments)
+        # Keep legacy metric keys in sync while clients migrate to the explicit names.
+        disbursed_funds = total_invested_amount
+        overdue_returns_count = overdue_investments_count
 
         metrics = InvestorDashboardMetrics(
             available_balance=available_balance,
             locked_funds=locked_funds,
             disbursed_funds=disbursed_funds,
             overdue_returns_count=overdue_returns_count,
+            total_invested_amount=total_invested_amount,
+            total_expected_returns=total_expected_returns,
+            active_investments_count=active_investments_count,
+            overdue_investments_count=overdue_investments_count,
         )
 
         # --- 3. Overdue Returns List (Limit 3) ---
-        overdue_stmt = (
-            select(Investment)
-            .options(
-                selectinload(Investment.package),
-                selectinload(Investment.package).selectinload(
-                    Package.cooperative
-                ).selectinload(User.cooperative_profile),
-            )
-            .where(
-                Investment.investor_id == investor_id,
-                Investment.status == InvestmentStatus.OVERDUE,
-            )
-            .order_by(Investment.created_at.asc())
-            .limit(3)
-        )
-        overdue_res = await self.db.execute(overdue_stmt)
-        overdue_investments = overdue_res.unique().scalars().all()
+        overdue_investments.sort(key=lambda inv: inv.created_at)
+        overdue_investments = overdue_investments[:3]
 
         overdue_returns = [
             OverdueReturnItem(
@@ -274,6 +303,8 @@ class InvestorDashboardService:
             
             pkg_title = getattr(inv.package, "title", getattr(inv.package, "name", "Investment Package")) if inv.package else "Investment Package"
             status_str = inv.status.value if hasattr(inv.status, "value") else str(inv.status)
+            if self._is_past_due(inv, today):
+                status_str = InvestmentStatus.OVERDUE.value
 
             recent_investments.append(
                 RecentInvestmentItem(

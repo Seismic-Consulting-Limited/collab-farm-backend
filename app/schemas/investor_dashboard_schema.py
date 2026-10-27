@@ -9,6 +9,10 @@ class InvestorDashboardMetrics(BaseModel):
     locked_funds: float
     disbursed_funds: float
     overdue_returns_count: int
+    total_invested_amount: float
+    total_expected_returns: float
+    active_investments_count: int
+    overdue_investments_count: int
 
 
 class OverdueReturnItem(BaseModel):

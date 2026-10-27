@@ -84,6 +84,20 @@ class DashboardService:
             )
         ) or 0
 
+        # 2a. Packages created by this cooperative
+        total_packages_created = await self.db.scalar(
+            select(func.count(Package.id)).where(
+                Package.cooperative_id == user.id,
+            )
+        ) or 0
+
+        packages_created_30d = await self.db.scalar(
+            select(func.count(Package.id)).where(
+                Package.cooperative_id == user.id,
+                Package.created_at >= thirty_days_ago,
+            )
+        ) or 0
+
         # 3. Farm Hectares Queries (Aggregated from Farm.size_in_hectares)
         total_hectares_stmt = (
             select(func.coalesce(func.sum(Farm.size_in_hectares), 0.0))
@@ -244,6 +258,11 @@ class DashboardService:
                     value=str(verified_farmers),
                     badge_value=f"+{verified_30d}",
                     subtext=f"↑ {verified_30d} in the last 30 days.",
+                ),
+                total_packages_created=KpiCard(
+                    value=str(total_packages_created),
+                    badge_value=f"+{packages_created_30d}",
+                    subtext=f"↑ {packages_created_30d} in the last 30 days.",
                 ),
                 total_farm_area=KpiCard(
                     value=f"{total_hectares:,.1f} ha",

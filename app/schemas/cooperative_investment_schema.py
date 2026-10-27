@@ -12,9 +12,10 @@ class InvestmentStatus(str, Enum):
 
 
 class SettlementStatus(str, Enum):
-    PENDING = "pending"
-    COMPLETED = "completed"
-    OVERDUE = "overdue"
+    PENDING = "PENDING"
+    SETTLED = "SETTLED"
+    DISBURSED = "DISBURSED"
+    OVERDUE = "OVERDUE"
 
 
 class Metrics(BaseModel):

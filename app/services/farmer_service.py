@@ -459,7 +459,9 @@ class FarmerService:
             )
             investments_by_farmer.setdefault(disbursement.farmer_id, []).append(
                 FarmerInvestmentRead(
-                    loan_id=disbursement.id,
+                    loan_id=disbursement.loan_code,
+                    package_id=package.id,
+                    package_title=package.title,
                     loan_amount=amount,
                     repayment_amount=round(amount * (1 + roi / 100), 2),
                     loan_date=loan_date,

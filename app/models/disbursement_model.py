@@ -8,6 +8,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
 
+def _generate_loan_code() -> str:
+    return f"FL-{uuid.uuid4().hex.upper()}"
+
+
 class DisbursementStatus(str, enum.Enum):
     PENDING = "PENDING"
     REVIEWING = "REVIEWING"
@@ -28,6 +32,9 @@ class Disbursement(Base, TimestampMixin):
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    loan_code: Mapped[str] = mapped_column(
+        String(40), unique=True, nullable=False, default=_generate_loan_code
     )
     package_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("packages.id", ondelete="CASCADE"), nullable=False

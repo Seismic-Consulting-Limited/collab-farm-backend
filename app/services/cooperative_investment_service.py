@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.models.cooperative_investment_model import Investment, InvestmentStatus
 from app.models.package_model import Package
 from app.models.user_model import User
+from app.models.wallet_model import Transaction, TransactionType, Wallet
 from app.schemas.cooperative_investment_schema import (
     CooperativeInvestmentDetail,
     CooperativeInvestmentList,
@@ -207,11 +208,44 @@ class CooperativeInvestmentService:
         today = date.today()
 
         if inv.status == InvestmentStatus.REPAID:
-            settlement_status = SettlementStatus.COMPLETED
+            settlement_status = SettlementStatus.SETTLED
+        elif inv.status == InvestmentStatus.PENDING:
+            settlement_status = SettlementStatus.PENDING
         elif inv.status == InvestmentStatus.OVERDUE or (payback_date and payback_date < today):
             settlement_status = SettlementStatus.OVERDUE
         else:
-            settlement_status = SettlementStatus.PENDING
+            settlement_status = SettlementStatus.DISBURSED
+
+        transaction_reference = inv.transaction_reference
+        if not transaction_reference:
+            transaction_stmt = (
+                select(Transaction)
+                .join(Wallet, Transaction.wallet_id == Wallet.id)
+                .where(
+                    Wallet.user_id == inv.investor_id,
+                    Transaction.type == TransactionType.INVESTMENT,
+                    Transaction.description == f"Investment in package: {package.title}",
+                )
+            )
+            transaction_result = await self.db.execute(transaction_stmt)
+            matching_transactions = transaction_result.scalars().all()
+            if matching_transactions:
+                transaction = min(
+                    matching_transactions,
+                    key=lambda item: abs(
+                        (item.created_at - inv.created_at).total_seconds()
+                    ),
+                )
+                transaction_reference = transaction.reference
+
+        roi_pct = float(getattr(package, "expected_roi", 0.0) or 0.0)
+        cooperative_share_pct = float(
+            getattr(package, "cooperative_share", 0.0) or 0.0
+        )
+        investor_roi_pct = max(roi_pct - cooperative_share_pct, 0.0)
+        expected_settlement_amount = float(inv.amount) * (
+            1 + investor_roi_pct / 100
+        )
 
         return CooperativeInvestmentDetail(
             id=inv.id,
@@ -227,8 +261,8 @@ class CooperativeInvestmentService:
             package_category=getattr(package, "category", "Crop Farming"),
             amount_invested=inv.amount,
             date_invested=inv.created_at,
-            payment_method=getattr(inv, "payment_method", "Bank Transfer"),
-            transaction_reference=getattr(inv, "transaction_reference", None),
+            payment_method=inv.payment_method or "Wallet",
+            transaction_reference=transaction_reference,
 
 
             farming_progress=round(avg_progress, 2),
@@ -236,7 +270,7 @@ class CooperativeInvestmentService:
             farmers_supported=len(package_farmers),
 
             expected_settlement_date=payback_date or today,
-            expected_settlement_amount=inv.expected_farmer_payout,
+            expected_settlement_amount=round(expected_settlement_amount, 2),
             settlement_status=settlement_status,
 
             status=inv.status,

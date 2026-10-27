@@ -138,7 +138,9 @@ class FarmerInvestmentStatus(str, Enum):
 
 
 class FarmerInvestmentRead(BaseModel):
-    loan_id: uuid.UUID
+    loan_id: str
+    package_id: uuid.UUID
+    package_title: str
     loan_amount: float
     repayment_amount: float
     loan_date: Optional[datetime] = None
