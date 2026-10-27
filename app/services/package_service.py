@@ -75,10 +75,11 @@ class PackageService:
                 detail="Only Cooperatives can create investment packages.",
             )
 
-        package = Package(
-            cooperative_id=user.id,
-            **payload.model_dump(),
-        )
+        package_data = payload.model_dump(exclude={"whats_included"})
+        package_data["whats_included"] = [
+            item.model_dump() for item in payload.whats_included or []
+        ]
+        package = Package(cooperative_id=user.id, **package_data)
         self.db.add(package)
         await self.db.commit()
         await self.db.refresh(package)
@@ -488,6 +489,11 @@ class PackageService:
             )
 
         update_data = payload.model_dump(exclude_unset=True)
+        if "whats_included" in update_data and update_data["whats_included"] is not None:
+            update_data["whats_included"] = [
+                item.model_dump()
+                for item in payload.whats_included or []
+            ]
 
         target_type = update_data.get("package_type", package.package_type)
         target_amount = update_data.get("fund_amount", package.fund_amount)

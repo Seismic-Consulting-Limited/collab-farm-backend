@@ -1,7 +1,14 @@
 import uuid
 from datetime import date, datetime
 from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    model_validator,
+)
 
 from app.models.package_model import (
     FarmerPackageStatus,
@@ -14,7 +21,11 @@ from app.models.user_model import InvestorType
 
 
 class WhatsIncludedItem(BaseModel):
-    item: str = Field(..., description="Name of item/input, e.g. Fertilizer")
+    item: str = Field(
+        ...,
+        description="Name of item/input, e.g. Fertilizer",
+        validation_alias=AliasChoices("item", "name", "input"),
+    )
     amount: Optional[float] = Field(default=0.0, description="Cost or allocated amount in Naira")
 
     model_config = ConfigDict(from_attributes=True)
@@ -31,7 +42,11 @@ class PackageCreate(BaseModel):
     expected_payback_date: date
     expected_roi: float = Field(..., description="Percentage ROI e.g. 15.0")
     cooperative_share: float = Field(..., description="Cooperative cut % e.g. 5.0")
-    whats_included: Optional[List[WhatsIncludedItem]] = Field(default_factory=list)
+    whats_included: List[WhatsIncludedItem] = Field(
+        ...,
+        min_length=1,
+        validation_alias=AliasChoices("whats_included", "whatsIncluded"),
+    )
 
     @model_validator(mode="after")
     def validate_fund_amount_by_type(self):
@@ -173,5 +188,8 @@ class PackageUpdate(BaseModel):
     expected_payback_date: Optional[date] = None
     expected_roi: Optional[float] = None
     cooperative_share: Optional[float] = None
-    whats_included: Optional[List[WhatsIncludedItem]] = None
+    whats_included: Optional[List[WhatsIncludedItem]] = Field(
+        default=None,
+        validation_alias=AliasChoices("whats_included", "whatsIncluded"),
+    )
     status: Optional[PackageStatus] = None
