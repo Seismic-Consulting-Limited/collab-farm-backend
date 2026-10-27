@@ -1,6 +1,7 @@
 import math
 import uuid
-from typing import List, Optional, Union
+from datetime import date
+from typing import Dict, List, Optional, Union
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import cast, func, or_, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,11 +9,16 @@ from sqlalchemy.orm import selectinload
 
 from app.models.farmer_model import Farm, Farmer, FarmingCategory, FarmStatus, Gender, WRSStatus
 from app.models.cooperative_investment_model import Investment, InvestmentStatus
-from app.models.package_model import PackageFarmer
+from app.models.disbursement_model import Disbursement, DisbursementStatus
+from app.models.package_model import Package, PackageFarmer
+from app.models.settlement_model import Settlement, SettlementStatus
 from app.models.user_model import User, UserRole
 from app.schemas.farmer_schema import (
     FarmCreate,
     FarmStatusUpdate,
+    FarmerInvestmentRead,
+    FarmerInvestmentStatus,
+    FarmerRead,
     FarmerDirectoryItem,
     FarmerDirectoryMetrics,
     FarmerDirectoryResponse,
@@ -363,17 +369,105 @@ class FarmerService:
         farmers = result.scalars().unique().all()
 
         total_pages = math.ceil(total / page_size) if page_size > 0 else 1
+        investments_by_farmer = await self._get_farmer_investments_by_ids(
+            [farmer.id for farmer in farmers]
+        )
+        farmer_reads = [
+            FarmerRead.model_validate(farmer).model_copy(
+                update={
+                    "farmer_investments": investments_by_farmer.get(farmer.id, [])
+                }
+            )
+            for farmer in farmers
+        ]
 
         return PaginatedFarmerResponse(
-            items=farmers,
+            items=farmer_reads,
             total=total,
             page=page,
             page_size=page_size,
             total_pages=total_pages,
         )
 
-    async def get_farmer_profile(self, farmer_id: uuid.UUID) -> Farmer:
-        return await self.fetch_farmer_with_relations(farmer_id)
+    async def get_farmer_profile(self, farmer_id: uuid.UUID) -> FarmerRead:
+        farmer = await self.fetch_farmer_with_relations(farmer_id)
+        investments = await self.get_farmer_investments(farmer_id)
+        return FarmerRead.model_validate(farmer).model_copy(
+            update={"farmer_investments": investments}
+        )
+
+    async def get_farmer_investments(
+        self, farmer_id: uuid.UUID
+    ) -> List[FarmerInvestmentRead]:
+        investments_by_farmer = await self._get_farmer_investments_by_ids(
+            [farmer_id]
+        )
+        return investments_by_farmer.get(farmer_id, [])
+
+    async def _get_farmer_investments_by_ids(
+        self, farmer_ids: List[uuid.UUID]
+    ) -> Dict[uuid.UUID, List[FarmerInvestmentRead]]:
+        if not farmer_ids:
+            return {}
+
+        stmt = (
+            select(Disbursement, Package)
+            .join(Package, Package.id == Disbursement.package_id)
+            .where(Disbursement.farmer_id.in_(farmer_ids))
+            .order_by(Disbursement.disbursement_date.desc())
+        )
+        result = await self.db.execute(stmt)
+        rows = result.all()
+        if not rows:
+            return {}
+
+        disbursement_ids = [disbursement.id for disbursement, _ in rows]
+        settled_ids = set(
+            (await self.db.execute(
+                select(Settlement.disbursement_id).where(
+                    Settlement.disbursement_id.in_(disbursement_ids),
+                    Settlement.status == SettlementStatus.SETTLED,
+                )
+            )).scalars().all()
+        )
+
+        today = date.today()
+        investments_by_farmer: Dict[uuid.UUID, List[FarmerInvestmentRead]] = {
+            farmer_id: [] for farmer_id in farmer_ids
+        }
+        for disbursement, package in rows:
+            amount = float(package.fund_amount or disbursement.amount or 0.0)
+            roi = float(package.expected_roi or 0.0)
+            due_date = package.expected_payback_date
+
+            if disbursement.id in settled_ids:
+                investment_status = FarmerInvestmentStatus.REPAID
+            elif (
+                disbursement.status == DisbursementStatus.DISBURSED
+                and due_date < today
+            ):
+                investment_status = FarmerInvestmentStatus.OVERDUE
+            elif disbursement.status == DisbursementStatus.DISBURSED:
+                investment_status = FarmerInvestmentStatus.DISBURSED
+            else:
+                investment_status = FarmerInvestmentStatus.IN_PROGRESS
+
+            loan_date = (
+                disbursement.disbursement_date
+                if disbursement.status == DisbursementStatus.DISBURSED
+                else None
+            )
+            investments_by_farmer.setdefault(disbursement.farmer_id, []).append(
+                FarmerInvestmentRead(
+                    loan_id=disbursement.id,
+                    loan_amount=amount,
+                    repayment_amount=round(amount * (1 + roi / 100), 2),
+                    loan_date=loan_date,
+                    due_date=due_date,
+                    status=investment_status,
+                )
+            )
+        return investments_by_farmer
 
     async def update_farmer(
         self,

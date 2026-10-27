@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Any, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -130,6 +130,22 @@ class FarmRead(BaseModel):
 FarmResponse = FarmRead
 
 
+class FarmerInvestmentStatus(str, Enum):
+    IN_PROGRESS = "IN_PROGRESS"
+    DISBURSED = "DISBURSED"
+    REPAID = "REPAID"
+    OVERDUE = "OVERDUE"
+
+
+class FarmerInvestmentRead(BaseModel):
+    loan_id: uuid.UUID
+    loan_amount: float
+    repayment_amount: float
+    loan_date: Optional[datetime] = None
+    due_date: date
+    status: FarmerInvestmentStatus
+
+
 class FarmerCreate(BaseModel):
     full_name: str = Field(..., min_length=2)
     nin: str = Field(..., description="11-digit National Identification Number")
@@ -215,6 +231,7 @@ class FarmerRead(BaseModel):
     wrs_status: WRSStatus
     cooperative: Optional[CooperativeSummary] = None
     farms: list[FarmRead] = Field(default_factory=list)
+    farmer_investments: list[FarmerInvestmentRead] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     date_added: Optional[str] = None

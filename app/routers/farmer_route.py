@@ -20,6 +20,7 @@ from app.models.user_model import User, UserRole
 from app.schemas.farmer_schema import (
     FarmCreate,
     FarmerDirectoryResponse,
+    FarmerInvestmentRead,
     FarmerRead,
     FarmRead,
     FarmStatusUpdate,
@@ -162,6 +163,25 @@ async def get_farmer_profile(
     db: AsyncSession = Depends(get_async_session),
 ):
     return await FarmerService(db).get_farmer_profile(farmer_id)
+
+
+@router.get(
+    "/{farmer_id}/investments",
+    response_model=List[FarmerInvestmentRead],
+    status_code=status.HTTP_200_OK,
+)
+async def get_farmer_investments(
+    farmer_id: uuid.UUID,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    farmer = await FarmerService(db).fetch_farmer_with_relations(farmer_id)
+    if user.role == UserRole.COOPERATIVE and farmer.cooperative_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorized to view this farmer's investments.",
+        )
+    return await FarmerService(db).get_farmer_investments(farmer_id)
 
 
 @router.patch("/{farmer_id}", response_model=FarmerRead)
