@@ -24,8 +24,8 @@ class InvestmentResponse(BaseModel):
 
 class InvestmentSummaryMetrics(BaseModel):
     total_invested: float
-    active_investments: float
-    packages_funded: float
+    active_investments: int
+    packages_funded: int
     pending_settlement: float
 
 

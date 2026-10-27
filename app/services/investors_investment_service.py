@@ -240,16 +240,17 @@ class InvestmentService:
         total_invested = sum(float(inv.amount) for inv in all_investments)
 
         active_investments = sum(
-            float(inv.amount)
+            1
             for inv in all_investments
             if str(getattr(inv.status, "value", inv.status)).upper() == "ACTIVE"
         )
 
-        packages_funded = sum(
-            float(inv.amount)
+        funded_statuses = {"ACTIVE", "REPAID", "OVERDUE"}
+        packages_funded = len({
+            inv.package_id
             for inv in all_investments
-            if str(getattr(inv.status, "value", inv.status)).upper() in ["ACTIVE", "COMPLETED"]
-        )
+            if str(getattr(inv.status, "value", inv.status)).upper() in funded_statuses
+        })
 
         pending_settlement = 0.0
         items: List[InvestorInvestmentListItem] = []
