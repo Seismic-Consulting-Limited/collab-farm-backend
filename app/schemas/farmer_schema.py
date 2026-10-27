@@ -152,6 +152,8 @@ class FarmerCreate(BaseModel):
     full_name: str = Field(..., min_length=2)
     nin: str = Field(..., description="11-digit National Identification Number")
     phone_number: str
+    account_number: Optional[str] = None
+    bank_name: Optional[str] = None
     gender: Gender
     farming_category: Optional[FarmingCategory] = Field(
         None, description="Primary farming category"
@@ -193,6 +195,8 @@ class FarmerUpdate(BaseModel):
     full_name: Optional[str] = None
     nin: Optional[str] = None
     phone_number: Optional[str] = None
+    account_number: Optional[str] = None
+    bank_name: Optional[str] = None
     gender: Optional[Gender] = None
     farming_category: Optional[FarmingCategory] = None
     additional_info: Optional[str] = None
@@ -226,6 +230,8 @@ class FarmerRead(BaseModel):
     full_name: str
     nin: str
     phone_number: str
+    account_number: Optional[str] = None
+    bank_name: Optional[str] = None
     gender: Gender
     farming_category: Optional[FarmingCategory] = None
     photo: Optional[str] = None

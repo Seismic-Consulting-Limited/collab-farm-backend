@@ -86,6 +86,8 @@ class Farmer(Base, TimestampMixin):
     full_name: Mapped[str] = mapped_column(String, nullable=False)
     nin: Mapped[str] = mapped_column(String(11), nullable=False)
     phone_number: Mapped[str] = mapped_column(String, nullable=False)
+    account_number: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    bank_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     gender: Mapped[Gender] = mapped_column(
         FlexibleEnum(Gender), nullable=False
     )
