@@ -19,6 +19,7 @@ from app.models.package_model import (
     PackageType,
 )
 from app.models.user_model import User, UserRole
+from app.utils.settlement_dates import package_settlement_date
 from app.schemas.package_schema import (
     AssignFarmerSchema,
     PackageCreate,
@@ -196,7 +197,8 @@ class PackageService:
         query = (
             select(Package)
             .options(
-                selectinload(Package.cooperative).selectinload(User.cooperative_profile)
+                selectinload(Package.cooperative).selectinload(User.cooperative_profile),
+                selectinload(Package.disbursements),
             )
         )
 
@@ -241,7 +243,7 @@ class PackageService:
                     farming_cycle=pkg.farming_cycle,
                     short_description=pkg.short_description,
                     tenure_months=pkg.tenure_months,
-                    expected_payback_date=pkg.expected_payback_date,
+                    expected_payback_date=package_settlement_date(pkg),
                     expected_roi=roi_val,
                     cooperative_share=float(pkg.cooperative_share or 0.0),
                     expected_settlement_amount=settlement_amt,
@@ -355,7 +357,7 @@ class PackageService:
                         payback_date=(
                             _add_months(payout_date, tenure_months)
                             if payout_date
-                            else getattr(pf, "payback_date", package.expected_payback_date)
+                            else package_settlement_date(package, farmer_id=pf.farmer_id)
                         ),
                         status=pf.status,
                     )
@@ -380,7 +382,7 @@ class PackageService:
                         amount=inv_amount,
                         expected_settlement=inv_settlement,
                         created_at=inv.created_at,
-                        payback_due_date=getattr(inv, "payback_due_date", package.expected_payback_date),
+                        payback_due_date=package_settlement_date(package),
                     )
                 )
 
@@ -403,7 +405,7 @@ class PackageService:
             short_description=package.short_description,
             fund_amount=fund_amount,
             tenure_months=package.tenure_months,
-            expected_payback_date=package.expected_payback_date,
+            expected_payback_date=package_settlement_date(package),
             expected_roi=expected_roi,
             cooperative_share=float(package.cooperative_share or 0.0),
             expected_settlement_amount=expected_settlement_amount,
@@ -432,7 +434,11 @@ class PackageService:
                 detail="Access denied. Investors cannot view investor details.",
             )
 
-        pkg_res = await self.db.execute(select(Package).where(Package.id == package_id))
+        pkg_res = await self.db.execute(
+            select(Package)
+            .options(selectinload(Package.disbursements))
+            .where(Package.id == package_id)
+        )
         package = pkg_res.scalars().first()
 
         if not package:
@@ -465,8 +471,7 @@ class PackageService:
                 investor_type=getattr(inv.investor, "investor_type", None),
                 amount=float(inv.amount),
                 invested_at=inv.created_at,
-                payback_due_date=getattr(inv, "payback_due_date", package.expected_payback_date)
-                or package.expected_payback_date,
+                payback_due_date=package_settlement_date(package),
             )
             for inv in investments
         ]

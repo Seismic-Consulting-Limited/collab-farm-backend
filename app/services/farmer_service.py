@@ -13,6 +13,7 @@ from app.models.disbursement_model import Disbursement, DisbursementStatus
 from app.models.package_model import Package, PackageFarmer
 from app.models.settlement_model import Settlement, SettlementStatus
 from app.models.user_model import User, UserRole
+from app.utils.settlement_dates import package_settlement_date
 from app.schemas.farmer_schema import (
     FarmCreate,
     FarmStatusUpdate,
@@ -442,7 +443,7 @@ class FarmerService:
         for disbursement, package in rows:
             amount = float(package.fund_amount or disbursement.amount or 0.0)
             roi = float(package.expected_roi or 0.0)
-            due_date = package.expected_payback_date
+            due_date = package_settlement_date(package, [disbursement])
 
             if disbursement.id in settled_ids:
                 investment_status = FarmerInvestmentStatus.REPAID

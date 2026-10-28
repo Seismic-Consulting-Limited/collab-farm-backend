@@ -9,6 +9,7 @@ from app.models.cooperative_investment_model import Investment, InvestmentStatus
 from app.models.package_model import Package
 from app.models.user_model import User
 from app.models.wallet_model import Transaction, TransactionType, Wallet
+from app.utils.settlement_dates import package_settlement_date
 from app.schemas.cooperative_investment_schema import (
     CooperativeInvestmentDetail,
     CooperativeInvestmentList,
@@ -177,6 +178,7 @@ class CooperativeInvestmentService:
             .options(
                 selectinload(Investment.package).selectinload(
                     Package.package_farmers),
+                selectinload(Investment.package).selectinload(Package.disbursements),
                 selectinload(Investment.investor),
             )
             .join(Package, Investment.package_id == Package.id)
@@ -204,7 +206,7 @@ class CooperativeInvestmentService:
         else:
             avg_progress = 0.0
 
-        payback_date = getattr(package, "expected_payback_date", None)
+        payback_date = package_settlement_date(package)
         today = date.today()
 
         if inv.status == InvestmentStatus.REPAID:

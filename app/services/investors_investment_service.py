@@ -1,4 +1,3 @@
-import calendar
 import uuid
 from datetime import datetime, time, timezone
 from typing import Optional, List
@@ -8,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.cooperative_investment_model import Investment, InvestmentStatus
-from app.models.disbursement_model import DisbursementStatus
 from app.models.farmer_model import Farmer
 from app.models.package_model import Package, PackageFarmer
 from app.models.user_model import User, UserRole
@@ -18,6 +16,7 @@ from app.models.wallet_model import (
     TransactionType,
     Wallet,
 )
+from app.utils.settlement_dates import package_settlement_date
 from app.schemas.investors_investment_schema import (
     InvestmentCreateRequest,
     InvestmentResponse,
@@ -46,21 +45,13 @@ class InvestmentService:
         return 0.0
 
     def _get_payback_date(self, package: Package) -> Optional[datetime]:
-        """Extract expected payback date from package and convert to datetime."""
-        payback_date = getattr(package, "expected_payback_date", None)
+        """Resolve package payback date, recalculating after disbursement."""
+        payback_date = package_settlement_date(package)
         if payback_date:
             if isinstance(payback_date, datetime):
                 return payback_date
             return datetime.combine(payback_date, time.min).replace(tzinfo=timezone.utc)
         return None
-
-    @staticmethod
-    def _add_months(value: datetime, months: int) -> datetime:
-        month_index = value.month - 1 + months
-        year = value.year + month_index // 12
-        month = month_index % 12 + 1
-        day = min(value.day, calendar.monthrange(year, month)[1])
-        return value.replace(year=year, month=month, day=day)
 
     def _get_farming_category(self, package: Optional[Package]) -> str:
         """Extract category from package."""
@@ -87,7 +78,11 @@ class InvestmentService:
         investor_id = user.id
 
         # --- 1. Fetch & Validate Package ---
-        package_stmt = select(Package).where(Package.id == package_id)
+        package_stmt = (
+            select(Package)
+            .options(selectinload(Package.disbursements))
+            .where(Package.id == package_id)
+        )
         package_res = await self.db.execute(package_stmt)
         package = package_res.unique().scalar_one_or_none()
 
@@ -230,7 +225,9 @@ class InvestmentService:
 
         stmt = (
             select(Investment)
-            .options(selectinload(Investment.package))
+            .options(
+                selectinload(Investment.package).selectinload(Package.disbursements)
+            )
             .where(Investment.investor_id == investor_id)
             .order_by(Investment.created_at.desc())
         )
@@ -272,7 +269,9 @@ class InvestmentService:
             if inv_status.upper() in ["ACTIVE", "PENDING"]:
                 pending_settlement += expected_settlement
 
-            expected_settlement_date = self._get_payback_date(pkg) if pkg else None
+            expected_settlement_date = (
+                package_settlement_date(pkg) if pkg else None
+            )
 
             if status_filter and status_filter.upper() != "ALL":
                 if inv_status.upper() != status_filter.upper():
@@ -362,18 +361,7 @@ class InvestmentService:
         investor_roi_pct = max(roi_pct - cooperative_share_pct, 0.0)
         expected_settlement = float(investment.amount) * (1 + investor_roi_pct / 100)
 
-        disbursed_dates = [
-            disbursement.disbursement_date
-            for disbursement in (getattr(pkg, "disbursements", []) if pkg else [])
-            if disbursement.status == DisbursementStatus.DISBURSED
-            and disbursement.disbursement_date is not None
-        ]
-        if disbursed_dates:
-            latest_disbursed_at = max(disbursed_dates)
-            tenure_months = int(getattr(pkg, "tenure_months", 0) or 0)
-            due_date = self._add_months(latest_disbursed_at, tenure_months)
-        else:
-            due_date = self._get_payback_date(pkg) if pkg else None
+        due_date = self._get_payback_date(pkg) if pkg else None
 
         total_farm_size = 0.0
         farm_locations = set()

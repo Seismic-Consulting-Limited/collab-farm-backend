@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from typing import List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -10,6 +10,7 @@ from app.models.cooperative_investment_model import Investment, InvestmentStatus
 from app.models.package_model import Package
 from app.models.user_model import User, UserRole
 from app.models.wallet_model import Wallet
+from app.utils.settlement_dates import package_settlement_date
 from app.schemas.investor_dashboard_schema import (
     FarmingCategoryAllocationItem,
     InvestorDashboardMetrics,
@@ -26,28 +27,12 @@ class InvestorDashboardService:
         self.db = db
 
     def _get_due_date(self, inv: Investment):
-        """Safely extract due date from Investment or linked Package."""
-        date_attrs = [
-            "due_date",
-            "expected_payback_date",
-            "payback_date",
-            "maturity_date",
-            "repayment_date",
-            "end_date",
-        ]
-
-        # 1. Check direct Investment attributes
-        for attr in date_attrs:
-            val = getattr(inv, attr, None)
-            if val is not None:
-                return val
-
-        # 2. Check Package attributes as fallback
+        """Use the package date until disbursement, then package tenure."""
         if getattr(inv, "package", None):
-            for attr in date_attrs:
-                val = getattr(inv.package, attr, None)
-                if val is not None:
-                    return val
+            val = package_settlement_date(inv.package)
+            if isinstance(val, date) and not isinstance(val, datetime):
+                return datetime.combine(val, time.min, tzinfo=timezone.utc)
+            return val
 
         return None
 
@@ -173,6 +158,7 @@ class InvestorDashboardService:
         investments_stmt = (
             select(Investment)
             .options(
+                selectinload(Investment.package).selectinload(Package.disbursements),
                 selectinload(Investment.package)
                 .selectinload(Package.cooperative)
                 .selectinload(User.cooperative_profile)
@@ -280,6 +266,7 @@ class InvestorDashboardService:
             select(Investment)
             .options(
                 selectinload(Investment.package),
+                selectinload(Investment.package).selectinload(Package.disbursements),
                 selectinload(Investment.package).selectinload(
                     Package.cooperative
                 ).selectinload(User.cooperative_profile),
