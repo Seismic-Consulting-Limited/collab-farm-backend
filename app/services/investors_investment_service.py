@@ -10,6 +10,7 @@ from app.models.cooperative_investment_model import Investment, InvestmentStatus
 from app.models.farmer_model import Farmer
 from app.models.package_model import Package, PackageFarmer
 from app.models.user_model import User, UserRole
+from app.models.disbursement_model import DisbursementStatus
 from app.models.wallet_model import (
     Transaction,
     TransactionStatus,
@@ -25,6 +26,7 @@ from app.schemas.investors_investment_schema import (
     InvestorInvestmentDetailResponse,
     InvestorInvestmentListItem,
     InvestorInvestmentsOverviewResponse,
+    InvestmentProgressResponse,
     YourInvestmentDetails,
     SettlementInformation,
 )
@@ -69,6 +71,129 @@ class InvestmentService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied. Only registered investors can access this page.",
             )
+
+    def _build_investment_progress(
+        self, investment: Investment
+    ) -> InvestmentProgressResponse:
+        package = investment.package
+        package_title = getattr(package, "title", "Investment Package")
+        amount = float(investment.amount or 0.0)
+        roi = self._get_package_roi(package) if package else 0.0
+        cooperative_share = (
+            float(getattr(package, "cooperative_share", 0.0) or 0.0)
+            if package
+            else 0.0
+        )
+        investor_roi = max(roi - cooperative_share, 0.0)
+        expected_settlement = amount * (1 + investor_roi / 100)
+        expected_profit = max(expected_settlement - amount, 0.0)
+
+        disbursements = getattr(package, "disbursements", []) if package else []
+        disbursed = [
+            item
+            for item in disbursements
+            if item.status == DisbursementStatus.DISBURSED
+            and item.disbursement_date is not None
+        ]
+        start_date = None
+        settlement_date = (
+            package_settlement_date(package) if package else None
+        )
+        if disbursed:
+            latest_disbursement = max(
+                disbursed, key=lambda item: item.disbursement_date
+            )
+            start_date = latest_disbursement.disbursement_date.date()
+
+        tenure_days = (
+            max((settlement_date - start_date).days, 0)
+            if settlement_date and start_date
+            else 0
+        )
+        today = datetime.now(timezone.utc).date()
+        elapsed_days = (
+            min(max((today - start_date).days, 0), tenure_days)
+            if start_date and tenure_days
+            else 0
+        )
+        remaining_days = max(tenure_days - elapsed_days, 0)
+        daily_expected_payout = (
+            expected_settlement / tenure_days if tenure_days else 0.0
+        )
+        daily_expected_profit = expected_profit / tenure_days if tenure_days else 0.0
+
+        if investment.status == InvestmentStatus.REPAID:
+            progress_percentage = 100.0
+            status_text = "SETTLED"
+        elif start_date is None:
+            progress_percentage = 0.0
+            status_text = "AWAITING_DISBURSEMENT"
+        elif (
+            investment.status == InvestmentStatus.OVERDUE
+            or (settlement_date and today > settlement_date)
+        ):
+            progress_percentage = 100.0
+            status_text = "OVERDUE"
+        else:
+            progress_percentage = (
+                round(elapsed_days / tenure_days * 100, 2)
+                if tenure_days
+                else 100.0
+            )
+            status_text = "IN_PROGRESS"
+
+        if investment.status == InvestmentStatus.REPAID:
+            elapsed_days = tenure_days
+            remaining_days = 0
+
+        expected_payout_to_date = daily_expected_payout * elapsed_days
+        expected_profit_to_date = daily_expected_profit * elapsed_days
+        if investment.status == InvestmentStatus.REPAID:
+            expected_payout_to_date = expected_settlement
+            expected_profit_to_date = expected_profit
+
+        return InvestmentProgressResponse(
+            investment_id=investment.id,
+            package_id=investment.package_id,
+            package_title=package_title,
+            amount_invested=round(amount, 2),
+            expected_settlement_amount=round(expected_settlement, 2),
+            expected_profit=round(expected_profit, 2),
+            disbursement_date=start_date,
+            expected_settlement_date=settlement_date,
+            tenure_days=tenure_days,
+            elapsed_days=elapsed_days,
+            remaining_days=remaining_days,
+            daily_expected_payout=round(daily_expected_payout, 2),
+            daily_expected_profit=round(daily_expected_profit, 2),
+            expected_payout_to_date=round(expected_payout_to_date, 2),
+            expected_profit_to_date=round(expected_profit_to_date, 2),
+            progress_percentage=progress_percentage,
+            status=status_text,
+        )
+
+    async def get_investor_investment_progress(
+        self, user: User, investment_id: uuid.UUID
+    ) -> InvestmentProgressResponse:
+        self._verify_investor_role(user)
+        stmt = (
+            select(Investment)
+            .options(
+                selectinload(Investment.package).selectinload(Package.disbursements)
+            )
+            .where(
+                Investment.id == investment_id,
+                Investment.investor_id == user.id,
+            )
+        )
+        result = await self.db.execute(stmt)
+        investment = result.unique().scalar_one_or_none()
+        if not investment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Investment record not found.",
+            )
+        return self._build_investment_progress(investment)
 
     async def process_investment(
         self, user: User, package_id: uuid.UUID
@@ -396,6 +521,7 @@ class InvestmentService:
                 transaction_reference=tx_ref,
                 status=inv_status_str.capitalize(),
             ),
+            investment_progress=self._build_investment_progress(investment),
             package_progress=PackageFundingProgress(
                 progress_percentage=progress_pct,
                 amount_raised=amount_raised,

@@ -7,6 +7,7 @@ from app.db import get_async_session
 from app.models.user_model import User
 from app.schemas.investors_investment_schema import (
     InvestmentCreateRequest,
+    InvestmentProgressResponse,
     InvestmentResponse,
     InvestorInvestmentDetailResponse,
     InvestorInvestmentsOverviewResponse,
@@ -53,5 +54,20 @@ async def get_investment_detail(
     db: AsyncSession = Depends(get_async_session),
 ):
     return await InvestmentService(db).get_investor_investment_detail(
+        user=user, investment_id=investment_id
+    )
+
+
+@router.get(
+    "/{investment_id}/progress",
+    response_model=InvestmentProgressResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_investment_progress(
+    investment_id: uuid.UUID,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    return await InvestmentService(db).get_investor_investment_progress(
         user=user, investment_id=investment_id
     )
