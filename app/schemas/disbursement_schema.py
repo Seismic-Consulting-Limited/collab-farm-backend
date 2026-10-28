@@ -15,7 +15,7 @@ class FarmerSummarySchema(BaseModel):
 
 
 class PackageSummarySchema(BaseModel):
-    id: uuid.UUID
+    id: str = Field(validation_alias="package_code")
     title: str
     category: str
 

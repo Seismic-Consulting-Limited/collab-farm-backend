@@ -192,7 +192,7 @@ class DisbursementService:
                 "photo": getattr(disbursement.farmer, "photo", None),
             },
             package={
-                "id": disbursement.package.id,
+                "package_code": disbursement.package.package_code,
                 "title": disbursement.package.title,
                 "category": disbursement.package.category,
             },

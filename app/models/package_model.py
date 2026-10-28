@@ -7,6 +7,11 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
+
+def _generate_package_code() -> str:
+    return f"PKG-{uuid.uuid4().hex[:12].upper()}"
+
+
 if TYPE_CHECKING:
     from app.models.farmer_model import Farmer
     from app.models.cooperative_investment_model import Investment
@@ -49,6 +54,9 @@ class Package(Base, TimestampMixin):
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    package_code: Mapped[str] = mapped_column(
+        String(20), unique=True, nullable=False, default=_generate_package_code
     )
     cooperative_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
