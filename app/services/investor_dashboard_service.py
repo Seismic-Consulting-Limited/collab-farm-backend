@@ -175,10 +175,14 @@ class InvestorDashboardService:
             inv for inv in investor_investments if inv.status != InvestmentStatus.REPAID
         ]
         total_expected_returns = sum(
-            self._get_expected_returns(
-                inv,
-                float(inv.amount or 0.0),
-                self._get_roi_percentage(inv.package),
+            max(
+                self._get_expected_returns(
+                    inv,
+                    float(inv.amount or 0.0),
+                    self._get_roi_percentage(inv.package),
+                )
+                - float(inv.amount or 0.0),
+                0.0,
             )
             for inv in unsettled_investments
         )
