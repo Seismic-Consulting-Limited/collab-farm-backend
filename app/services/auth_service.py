@@ -15,7 +15,6 @@ from app.schemas.user_schema import (
 )
 from app.utils.emails import (
     send_reset_email_background,
-    send_verification_email_background,
     send_welcome_email,
 )
 from app.utils.security import (
@@ -94,15 +93,13 @@ class AuthService:
             )
 
             # 3. Queue emails
-            send_welcome_email(
+            await send_welcome_email(
                 email_to=user.email,
-                background_tasks=background_tasks,
                 first_name=getattr(user, "first_name", None),
+                background_tasks=background_tasks,
             )
 
-            send_verification_email_background(
-                user.email, otp, background_tasks
-            )
+            # TODO(frontend): Re-enable after the email verification UI is implemented.
 
             # 4. Generate bearer token for immediate frontend session
             access_token = await self.strategy.write_token(user)
@@ -201,11 +198,11 @@ class AuthService:
             },
         )
 
-        send_verification_email_background(user.email, otp, background_tasks)
+        # TODO(frontend): Re-enable after the email verification UI is implemented.
 
         return {
             "status": "success",
-            "message": "A new verification OTP has been sent to your email.",
+            "message": "Verification email delivery is temporarily disabled.",
         }
 
     async def forgot_password(
