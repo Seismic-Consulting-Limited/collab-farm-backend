@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class InvestmentCreateRequest(BaseModel):
-    pass
+    amount: float = Field(..., gt=0, description="Amount to invest; must meet the package minimum.")
 
 
 class InvestmentResponse(BaseModel):

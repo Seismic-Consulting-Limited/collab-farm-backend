@@ -196,7 +196,7 @@ class InvestmentService:
         return self._build_investment_progress(investment)
 
     async def process_investment(
-        self, user: User, package_id: uuid.UUID
+        self, user: User, package_id: uuid.UUID, investment_amount: float
     ) -> InvestmentResponse:
         # --- 0. Role-based check ---
         self._verify_investor_role(user)
@@ -225,20 +225,20 @@ class InvestmentService:
                 detail="This investment package is currently closed for funding.",
             )
 
-        # Derive fixed price directly from package using fund_amount as primary
-        raw_amount = (
-            getattr(package, "fund_amount", None)
-            or getattr(package, "unit_price", None)
-            or getattr(package, "price", None)
-            or getattr(package, "amount", None)
-            or 0.0
-        )
-        investment_amount = float(raw_amount)
-
-        if investment_amount <= 0:
+        minimum_amount = float(package.fund_amount or 0.0)
+        investment_amount = float(investment_amount)
+        if minimum_amount <= 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Selected investment package has an invalid price configuration.",
+            )
+        if investment_amount < minimum_amount:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Investment amount must be at least the package minimum of "
+                    f"₦{minimum_amount:,.2f}."
+                ),
             )
 
         # --- 2. Fetch & Validate Wallet ---
@@ -286,7 +286,9 @@ class InvestmentService:
         # --- 5. Extract Package Attributes ---
         pkg_title = getattr(package, "title", "Investment Package")
         roi_pct = self._get_package_roi(package)
-        expected_returns = investment_amount + (investment_amount * (roi_pct / 100))
+        cooperative_share_pct = float(package.cooperative_share or 0.0)
+        investor_roi_pct = max(roi_pct - cooperative_share_pct, 0.0)
+        expected_returns = investment_amount * (1 + investor_roi_pct / 100)
         due_date = self._get_payback_date(package)
 
         # --- 6. Create Investment Record ---

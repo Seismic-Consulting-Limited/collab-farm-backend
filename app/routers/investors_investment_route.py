@@ -26,12 +26,12 @@ router = APIRouter(prefix="/investments", tags=["Investors Investments"], depend
 )
 async def create_investment(
     package_id: uuid.UUID,
-    payload: Optional[InvestmentCreateRequest] = None,
+    payload: InvestmentCreateRequest,
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     return await InvestmentService(db).process_investment(
-        user=user, package_id=package_id
+        user=user, package_id=package_id, investment_amount=payload.amount
     )
 
 
