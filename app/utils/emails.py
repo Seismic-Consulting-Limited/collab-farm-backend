@@ -19,7 +19,20 @@ async def _send_brevo_email(
     html_content: str,
     recipient_name: str | None = None,
 ) -> None:
-    api_key = os.getenv("BREVO_API_KEY", "").strip()
+    raw_api_key = os.getenv("BREVO_API_KEY", "")
+    api_key = raw_api_key.strip()
+    wrapped_in_quotes = (
+        len(raw_api_key) >= 2
+        and raw_api_key[0] in ("'", '"')
+        and raw_api_key[-1] == raw_api_key[0]
+    )
+    print(
+        "[TEMP DEBUG] BREVO_API_KEY state: "
+        f"present={bool(raw_api_key)}, "
+        f"raw_length={len(raw_api_key)}, trimmed_length={len(api_key)}, "
+        f"wrapped_in_quotes={wrapped_in_quotes}, "
+        f"has_outer_whitespace={raw_api_key != raw_api_key.strip()}"
+    )
     if not api_key:
         raise RuntimeError("BREVO_API_KEY is not configured.")
 
