@@ -1,8 +1,10 @@
+import json
 import math
 import uuid
 from datetime import date
 from typing import Dict, List, Optional, Union
 from fastapi import HTTPException, UploadFile, status
+from pydantic import ValidationError
 from sqlalchemy import cast, func, or_, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -67,6 +69,7 @@ class FarmerService:
 
     async def get_directory(
         self,
+        user: User,
         cooperative_id: Optional[uuid.UUID] = None,
         search: Optional[str] = None,
         crop_type: Optional[str] = None,
@@ -74,6 +77,8 @@ class FarmerService:
         page: int = 1,
         page_size: int = 10,
     ) -> FarmerDirectoryResponse:
+        if user.role == UserRole.COOPERATIVE:
+            cooperative_id = user.id
         base_query = select(Farmer)
 
         if cooperative_id:
@@ -221,8 +226,9 @@ class FarmerService:
         photo: Optional[UploadFile] = None,
         additional_info: Optional[str] = None,
         wrs_status: WRSStatus = WRSStatus.NOT_VERIFIED,
-        farms: Optional[List[FarmCreate]] = None,
+        farms_json: Optional[str] = None,
     ) -> Farmer:
+        farms = self._parse_farms(farms_json)
         if user.role != UserRole.COOPERATIVE:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -402,12 +408,42 @@ class FarmerService:
         )
 
     async def get_farmer_investments(
-        self, farmer_id: uuid.UUID
+        self, farmer_id: uuid.UUID, user: Optional[User] = None
     ) -> List[FarmerInvestmentRead]:
+        if user and user.role == UserRole.COOPERATIVE:
+            farmer = await self.fetch_farmer_with_relations(farmer_id)
+            if farmer.cooperative_id != user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You are not authorized to view this farmer's investments.",
+                )
         investments_by_farmer = await self._get_farmer_investments_by_ids(
             [farmer_id]
         )
         return investments_by_farmer.get(farmer_id, [])
+
+    @staticmethod
+    def _parse_farms(farms_json: Optional[str]) -> Optional[List[FarmCreate]]:
+        if not farms_json or not farms_json.strip() or farms_json.strip() == "null":
+            return None
+
+        try:
+            raw_farms = json.loads(farms_json)
+            if isinstance(raw_farms, str):
+                raw_farms = json.loads(raw_farms)
+
+            if not isinstance(raw_farms, list):
+                return []
+
+            return [
+                FarmCreate(**(json.loads(item) if isinstance(item, str) else item))
+                for item in raw_farms
+            ]
+        except (json.JSONDecodeError, ValidationError, TypeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid JSON format or schema for farms array: {exc}",
+            ) from exc
 
     async def _get_farmer_investments_by_ids(
         self, farmer_ids: List[uuid.UUID]

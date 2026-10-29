@@ -99,8 +99,6 @@ class AuthService:
                 background_tasks=background_tasks,
             )
 
-            # TODO(frontend): Re-enable after the email verification UI is implemented.
-
             # 4. Generate bearer token for immediate frontend session
             access_token = await self.strategy.write_token(user)
 

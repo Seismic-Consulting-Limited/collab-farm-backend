@@ -1,4 +1,3 @@
-import json
 import uuid
 from typing import List, Optional
 from fastapi import (
@@ -6,17 +5,15 @@ from fastapi import (
     Depends,
     File,
     Form,
-    HTTPException,
     Query,
     UploadFile,
     status,
 )
-from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_async_session
 from app.models.farmer_model import FarmingCategory, Gender, WRSStatus
-from app.models.user_model import User, UserRole
+from app.models.user_model import User
 from app.schemas.farmer_schema import (
     FarmCreate,
     FarmerDirectoryResponse,
@@ -51,30 +48,6 @@ async def add_farmer(
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    farms: Optional[List[FarmCreate]] = None
-
-    if farms_json and farms_json.strip() and farms_json.strip() != "null":
-        try:
-            raw_farms = json.loads(farms_json)
-
-            # Handle double-encoded JSON strings from form-data payloads
-            if isinstance(raw_farms, str):
-                raw_farms = json.loads(raw_farms)
-
-            parsed_farms = []
-            if isinstance(raw_farms, list):
-                for item in raw_farms:
-                    if isinstance(item, str):
-                        item = json.loads(item)
-                    parsed_farms.append(FarmCreate(**item))
-
-            farms = parsed_farms
-        except (json.JSONDecodeError, ValidationError, TypeError) as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid JSON format or schema for farms array: {str(e)}",
-            )
-
     return await FarmerService(db).add_farmer(
         user=user,
         full_name=full_name,
@@ -87,7 +60,7 @@ async def add_farmer(
         photo=photo,
         additional_info=additional_info,
         wrs_status=wrs_status,
-        farms=farms,
+        farms_json=farms_json,
     )
 
 
@@ -134,12 +107,8 @@ async def get_farmer_directory(
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    cooperative_id = (
-        user.id if getattr(user, "role", None) == UserRole.COOPERATIVE else None
-    )
-
     return await FarmerService(db).get_directory(
-        cooperative_id=cooperative_id,
+        user=user,
         search=search,
         crop_type=crop_type,
         status_filter=status_filter,
@@ -179,13 +148,7 @@ async def get_farmer_investments(
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    farmer = await FarmerService(db).fetch_farmer_with_relations(farmer_id)
-    if user.role == UserRole.COOPERATIVE and farmer.cooperative_id != user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not authorized to view this farmer's investments.",
-        )
-    return await FarmerService(db).get_farmer_investments(farmer_id)
+    return await FarmerService(db).get_farmer_investments(farmer_id, user=user)
 
 
 @router.patch("/{farmer_id}", response_model=FarmerRead)
