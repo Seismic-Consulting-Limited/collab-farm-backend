@@ -1,4 +1,4 @@
-pipaiosmtplib==5.1.3
+aiosmtplib==5.1.3
 alembic==1.19.2
 annotated-doc==0.0.5
 annotated-types==0.8.0
