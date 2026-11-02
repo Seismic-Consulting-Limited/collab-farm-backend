@@ -51,6 +51,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+@app.get("/health", tags=["Health"])
+async def health_check():
+    return {"status": "ok"}
+
 app.state.limiter = limiter
 app.add_exception_handler(
     RateLimitExceeded,
