@@ -107,6 +107,26 @@ async def current_cooperative_user(user: User = Depends(current_active_user)):
     return user
 
 
+async def cooperative_write_access(
+    request: Request,
+    user: User = Depends(current_active_user),
+):
+    """Keep cooperative business actions disabled until verification is approved."""
+    if (
+        user.role == UserRole.COOPERATIVE
+        and request.method not in {"GET", "HEAD", "OPTIONS"}
+        and user.verification_status != VerificationStatus.APPROVED
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Cooperative verification is pending admin review. "
+                f"Current status: '{user.verification_status.value}'."
+            ),
+        )
+    return user
+
+
 async def current_verified_investor(user: User = Depends(current_active_user)):
     if user.verification_status != VerificationStatus.APPROVED:
         raise HTTPException(

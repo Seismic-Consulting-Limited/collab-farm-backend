@@ -230,7 +230,15 @@ class ProfileService:
         elif user.group_profile:
             active_profile = GroupProfileRead.model_validate(user.group_profile)
         elif user.cooperative_profile:
-            active_profile = CooperativeProfileRead.model_validate(user.cooperative_profile)
+            active_profile = CooperativeProfileRead.model_validate(
+                {
+                    **{
+                        column.name: getattr(user.cooperative_profile, column.name)
+                        for column in CooperativeProfile.__table__.columns
+                    },
+                    "verification_status": user.verification_status,
+                }
+            )
 
         return UserProfile(
             id=user.id,

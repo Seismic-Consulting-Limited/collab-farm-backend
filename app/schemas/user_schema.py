@@ -55,15 +55,7 @@ class UserUpdate(schemas.BaseUserUpdate):
     first_name: str | None = None
     last_name: str | None = None
     phone_number: str | None = None
-    role: UserRole | None = None
     investor_type: InvestorType | None = None
-    verification_status: VerificationStatus | None = None
-
-    @model_validator(mode="after")
-    def validate_investor_type(self):
-        if self.role is not None and self.role != UserRole.INVESTOR:
-            self.investor_type = None
-        return self
 
 
 class ForgotPasswordSchema(BaseModel):

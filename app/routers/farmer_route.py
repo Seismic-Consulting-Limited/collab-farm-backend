@@ -24,9 +24,13 @@ from app.schemas.farmer_schema import (
     PaginatedFarmerResponse,
 )
 from app.services.farmer_service import FarmerService
-from app.users import current_active_user
+from app.users import cooperative_write_access, current_active_user
 
-router = APIRouter(prefix="/farmers", tags=["Farmer Directory"])
+router = APIRouter(
+    prefix="/farmers",
+    tags=["Farmer Directory"],
+    dependencies=[Depends(cooperative_write_access)],
+)
 
 
 @router.post("", response_model=FarmerRead, status_code=status.HTTP_201_CREATED)

@@ -103,6 +103,7 @@ class CooperativeProfileUpdate(BaseModel):
 class CooperativeProfileRead(CooperativeProfileBase):
     id: uuid.UUID
     user_id: uuid.UUID
+    verification_status: VerificationStatus
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)

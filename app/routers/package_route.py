@@ -16,9 +16,13 @@ from app.schemas.package_schema import (
     PackageUpdate,
 )
 from app.services.package_service import PackageService
-from app.users import current_active_user
+from app.users import cooperative_write_access, current_active_user
 
-router = APIRouter(prefix="/packages", tags=["Funding Packages"])
+router = APIRouter(
+    prefix="/packages",
+    tags=["Funding Packages"],
+    dependencies=[Depends(cooperative_write_access)],
+)
 
 
 @router.post("/", response_model=PackageDetailRead, status_code=status.HTTP_201_CREATED)
