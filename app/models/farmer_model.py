@@ -1,7 +1,8 @@
 import enum
 import uuid
+from datetime import date
 from typing import TYPE_CHECKING, List, Optional
-from sqlalchemy import Float, ForeignKey, String, TypeDecorator
+from sqlalchemy import Boolean, Date, Float, ForeignKey, Integer, String, TypeDecorator
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -84,9 +85,14 @@ class Farmer(Base, TimestampMixin):
     )
 
     full_name: Mapped[str] = mapped_column(String, nullable=False)
+    first_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    last_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    date_of_birth: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
     nin: Mapped[str] = mapped_column(String(11), nullable=False)
-    phone_number: Mapped[str] = mapped_column(String, nullable=False)
+    phone_number: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     account_number: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    account_name: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
     bank_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     gender: Mapped[Gender] = mapped_column(
         FlexibleEnum(Gender), nullable=False
@@ -95,6 +101,9 @@ class Farmer(Base, TimestampMixin):
         FlexibleEnum(FarmingCategory), nullable=True
     )
     photo: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    id_photo: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    years_of_experience: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    terms_accepted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     additional_info: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     wrs_status: Mapped[WRSStatus] = mapped_column(

@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from typing import List, Optional
 from fastapi import (
     APIRouter,
@@ -10,6 +11,7 @@ from fastapi import (
     status,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import EmailStr
 
 from app.db import get_async_session
 from app.models.farmer_model import FarmingCategory, Gender, WRSStatus
@@ -35,36 +37,45 @@ router = APIRouter(
 
 @router.post("", response_model=FarmerRead, status_code=status.HTTP_201_CREATED)
 async def add_farmer(
-    full_name: str = Form(...),
+    first_name: str = Form(...),
+    last_name: str = Form(...),
+    date_of_birth: date = Form(...),
+    email: EmailStr = Form(...),
     nin: str = Form(...),
-    phone_number: str = Form(...),
+    years_of_experience: int = Form(..., ge=0),
+    terms_accepted: bool = Form(...),
+    id_photo: UploadFile = File(...),
+    phone_number: Optional[str] = Form(None),
     account_number: Optional[str] = Form(None),
+    account_name: Optional[str] = Form(None),
     bank_name: Optional[str] = Form(None),
     gender: Gender = Form(...),
-    farming_category: Optional[FarmingCategory] = Form(None),
+    farming_category: FarmingCategory = Form(...),
     additional_info: Optional[str] = Form(None),
     wrs_status: WRSStatus = Form(WRSStatus.VERIFIED),
     photo: Optional[UploadFile] = File(None),
-    farms_json: Optional[str] = Form(
-        None,
-        description='JSON string array of farms, e.g. [{"name":"Farm 1","location":"Loc","size_in_hectares":10,"farming_category":"crop_farming","status":"ACTIVE"}]',
-    ),
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     return await FarmerService(db).add_farmer(
         user=user,
-        full_name=full_name,
+        first_name=first_name,
+        last_name=last_name,
+        date_of_birth=date_of_birth,
+        email=str(email),
         nin=nin,
+        years_of_experience=years_of_experience,
+        terms_accepted=terms_accepted,
+        id_photo=id_photo,
         phone_number=phone_number,
         account_number=account_number,
+        account_name=account_name,
         bank_name=bank_name,
         gender=gender,
         farming_category=farming_category,
         photo=photo,
         additional_info=additional_info,
         wrs_status=wrs_status,
-        farms_json=farms_json,
     )
 
 
@@ -139,7 +150,7 @@ async def get_farmer_profile(
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    return await FarmerService(db).get_farmer_profile(farmer_id)
+    return await FarmerService(db).get_farmer_profile(farmer_id, user=user)
 
 
 @router.get(
@@ -159,15 +170,22 @@ async def get_farmer_investments(
 async def update_farmer(
     farmer_id: uuid.UUID,
     full_name: Optional[str] = Form(None),
+    first_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
+    date_of_birth: Optional[date] = Form(None),
+    email: Optional[EmailStr] = Form(None),
     nin: Optional[str] = Form(None),
     phone_number: Optional[str] = Form(None),
     account_number: Optional[str] = Form(None),
+    account_name: Optional[str] = Form(None),
     bank_name: Optional[str] = Form(None),
     gender: Optional[Gender] = Form(None),
     farming_category: Optional[FarmingCategory] = Form(None),
     additional_info: Optional[str] = Form(None),
     wrs_status: Optional[WRSStatus] = Form(None),
     photo: Optional[UploadFile] = File(None),
+    id_photo: Optional[UploadFile] = File(None),
+    years_of_experience: Optional[int] = Form(None, ge=0),
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
@@ -175,15 +193,22 @@ async def update_farmer(
         farmer_id=farmer_id,
         user=user,
         full_name=full_name,
+        first_name=first_name,
+        last_name=last_name,
+        date_of_birth=date_of_birth,
+        email=str(email) if email else None,
         nin=nin,
         phone_number=phone_number,
         account_number=account_number,
+        account_name=account_name,
         bank_name=bank_name,
         gender=gender,
         farming_category=farming_category,
         additional_info=additional_info,
         wrs_status=wrs_status,
         photo=photo,
+        id_photo=id_photo,
+        years_of_experience=years_of_experience,
     )
 
 

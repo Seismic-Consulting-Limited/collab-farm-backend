@@ -1,10 +1,8 @@
-import json
 import math
 import uuid
 from datetime import date
 from typing import Dict, List, Optional, Union
 from fastapi import HTTPException, UploadFile, status
-from pydantic import ValidationError
 from sqlalchemy import cast, func, or_, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -21,6 +19,7 @@ from app.schemas.farmer_schema import (
     FarmStatusUpdate,
     FarmerInvestmentRead,
     FarmerInvestmentStatus,
+    FarmerActivityRead,
     FarmerRead,
     FarmerDirectoryItem,
     FarmerDirectoryMetrics,
@@ -216,29 +215,54 @@ class FarmerService:
     async def add_farmer(
         self,
         user: User,
-        full_name: str,
+        first_name: str,
+        last_name: str,
+        date_of_birth: date,
+        email: str,
         nin: str,
-        phone_number: str,
         gender: Gender,
+        years_of_experience: int,
+        terms_accepted: bool,
+        id_photo: UploadFile,
+        phone_number: Optional[str] = None,
         account_number: Optional[str] = None,
+        account_name: Optional[str] = None,
         bank_name: Optional[str] = None,
         farming_category: Optional[Union[FarmingCategory, str]] = None,
         photo: Optional[UploadFile] = None,
         additional_info: Optional[str] = None,
         wrs_status: WRSStatus = WRSStatus.NOT_VERIFIED,
-        farms_json: Optional[str] = None,
     ) -> Farmer:
-        farms = self._parse_farms(farms_json)
         if user.role != UserRole.COOPERATIVE:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only cooperatives are permitted to register farmers.",
             )
 
-        if not nin.isdigit() or len(nin) != 11:
+        if not (nin.isascii() and nin.isdigit() and len(nin) == 11):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="NIN must consist of exactly 11 numeric digits.",
+            )
+        if not terms_accepted:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="The farmer must accept the agreement terms.",
+            )
+        if years_of_experience < 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Years of experience cannot be negative.",
+            )
+        if date_of_birth >= date.today():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Date of birth must be in the past.",
+            )
+        if farming_category is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Farming category is required.",
             )
 
         if isinstance(farming_category, str):
@@ -257,6 +281,9 @@ class FarmerService:
                 photo, "collabfarm/farmer_photos"
             )
             photo_url = photo_res.get("secure_url")
+        id_photo_res = await upload_kyc_document(
+            id_photo, "collabfarm/farmer_ids"
+        )
 
         # Extract enum string values safely
         cat_val = (
@@ -269,44 +296,26 @@ class FarmerService:
 
         farmer = Farmer(
             cooperative_id=user.id,
-            full_name=full_name,
+            first_name=first_name,
+            last_name=last_name,
+            full_name=f"{first_name} {last_name}".strip(),
+            date_of_birth=date_of_birth,
+            email=email,
             nin=nin,
             phone_number=phone_number,
             account_number=account_number,
+            account_name=account_name,
             bank_name=bank_name,
             gender=gender_val,
             farming_category=cat_val,
             photo=photo_url,
+            id_photo=id_photo_res["secure_url"],
+            years_of_experience=years_of_experience,
+            terms_accepted=terms_accepted,
             additional_info=additional_info,
             wrs_status=wrs_val,
         )
         self.db.add(farmer)
-        await self.db.flush()
-
-        # Process attached farms only if provided
-        if farms:
-            for farm_item in farms:
-                farm_cat_val = (
-                    farm_item.farming_category.value
-                    if hasattr(farm_item.farming_category, "value")
-                    else farm_item.farming_category
-                )
-                farm_status_val = (
-                    farm_item.status.value
-                    if hasattr(farm_item.status, "value")
-                    else farm_item.status
-                )
-
-                farm = Farm(
-                    farmer_id=farmer.id,
-                    name=farm_item.name,
-                    location=farm_item.location,
-                    size_in_hectares=farm_item.size_in_hectares,
-                    farming_category=farm_cat_val,
-                    status=farm_status_val,
-                )
-                self.db.add(farm)  # Must be indented inside the loop
-
         await self.db.commit()
         return await self.fetch_farmer_with_relations(farmer.id)
     
@@ -400,12 +409,131 @@ class FarmerService:
             total_pages=total_pages,
         )
 
-    async def get_farmer_profile(self, farmer_id: uuid.UUID) -> FarmerRead:
+    async def get_farmer_profile(
+        self, farmer_id: uuid.UUID, user: Optional[User] = None
+    ) -> FarmerRead:
         farmer = await self.fetch_farmer_with_relations(farmer_id)
+        if user and user.role == UserRole.COOPERATIVE and farmer.cooperative_id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not authorized to view this farmer's profile.",
+            )
         investments = await self.get_farmer_investments(farmer_id)
+        activities = await self._get_recent_farmer_activities(farmer)
         return FarmerRead.model_validate(farmer).model_copy(
-            update={"farmer_investments": investments}
+            update={
+                "farmer_investments": investments,
+                "recent_activities": activities,
+            }
         )
+
+    async def _get_recent_farmer_activities(
+        self, farmer: Farmer, limit: int = 12
+    ) -> List[FarmerActivityRead]:
+        activities = [
+            FarmerActivityRead(
+                activity_type="farmer_registered",
+                description="Farmer profile registered",
+                occurred_at=farmer.created_at,
+            )
+        ]
+        if farmer.updated_at and farmer.updated_at > farmer.created_at:
+            activities.append(
+                FarmerActivityRead(
+                    activity_type="farmer_updated",
+                    description="Farmer profile updated",
+                    occurred_at=farmer.updated_at,
+                )
+            )
+
+        farm_rows = (
+            await self.db.execute(
+                select(Farm)
+                .where(Farm.farmer_id == farmer.id)
+                .order_by(Farm.updated_at.desc())
+                .limit(limit)
+            )
+        ).scalars().all()
+        for farm in farm_rows:
+            activities.append(
+                FarmerActivityRead(
+                    activity_type="farm_added",
+                    description=f"Farm '{farm.name}' added",
+                    occurred_at=farm.created_at,
+                )
+            )
+            if farm.updated_at and farm.updated_at > farm.created_at:
+                activities.append(
+                    FarmerActivityRead(
+                        activity_type="farm_updated",
+                        description=f"Farm '{farm.name}' updated",
+                        occurred_at=farm.updated_at,
+                        status=str(getattr(farm.status, "value", farm.status)),
+                    )
+                )
+
+        package_rows = (
+            await self.db.execute(
+                select(PackageFarmer, Package.title)
+                .join(Package, Package.id == PackageFarmer.package_id)
+                .where(PackageFarmer.farmer_id == farmer.id)
+                .order_by(PackageFarmer.updated_at.desc())
+                .limit(limit)
+            )
+        ).all()
+        for assignment, package_title in package_rows:
+            activities.append(
+                FarmerActivityRead(
+                    activity_type="package_assignment",
+                    description=f"Added to package '{package_title}'",
+                    occurred_at=assignment.updated_at or assignment.created_at,
+                    status=str(getattr(assignment.status, "value", assignment.status)),
+                    amount=float(assignment.allocated_amount or 0),
+                )
+            )
+
+        disbursement_rows = (
+            await self.db.execute(
+                select(Disbursement, Package.title)
+                .join(Package, Package.id == Disbursement.package_id)
+                .where(Disbursement.farmer_id == farmer.id)
+                .order_by(Disbursement.updated_at.desc())
+                .limit(limit)
+            )
+        ).all()
+        for disbursement, package_title in disbursement_rows:
+            activities.append(
+                FarmerActivityRead(
+                    activity_type="disbursement",
+                    description=f"Disbursement for package '{package_title}'",
+                    occurred_at=disbursement.updated_at or disbursement.created_at,
+                    status=str(getattr(disbursement.status, "value", disbursement.status)),
+                    amount=float(disbursement.amount or 0),
+                )
+            )
+
+        settlement_rows = (
+            await self.db.execute(
+                select(Settlement, Package.title)
+                .join(Package, Package.id == Settlement.package_id)
+                .where(Settlement.farmer_id == farmer.id)
+                .order_by(Settlement.updated_at.desc())
+                .limit(limit)
+            )
+        ).all()
+        for settlement, package_title in settlement_rows:
+            activities.append(
+                FarmerActivityRead(
+                    activity_type="settlement",
+                    description=f"Settlement for package '{package_title}'",
+                    occurred_at=settlement.updated_at or settlement.created_at,
+                    status=str(getattr(settlement.status, "value", settlement.status)),
+                    amount=float(settlement.amount_settled or 0),
+                )
+            )
+
+        activities.sort(key=lambda activity: activity.occurred_at, reverse=True)
+        return activities[:limit]
 
     async def get_farmer_investments(
         self, farmer_id: uuid.UUID, user: Optional[User] = None
@@ -421,29 +549,6 @@ class FarmerService:
             [farmer_id]
         )
         return investments_by_farmer.get(farmer_id, [])
-
-    @staticmethod
-    def _parse_farms(farms_json: Optional[str]) -> Optional[List[FarmCreate]]:
-        if not farms_json or not farms_json.strip() or farms_json.strip() == "null":
-            return None
-
-        try:
-            raw_farms = json.loads(farms_json)
-            if isinstance(raw_farms, str):
-                raw_farms = json.loads(raw_farms)
-
-            if not isinstance(raw_farms, list):
-                return []
-
-            return [
-                FarmCreate(**(json.loads(item) if isinstance(item, str) else item))
-                for item in raw_farms
-            ]
-        except (json.JSONDecodeError, ValidationError, TypeError) as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid JSON format or schema for farms array: {exc}",
-            ) from exc
 
     async def _get_farmer_investments_by_ids(
         self, farmer_ids: List[uuid.UUID]
@@ -517,15 +622,22 @@ class FarmerService:
         farmer_id: uuid.UUID,
         user: User,
         full_name: Optional[str] = None,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+        date_of_birth: Optional[date] = None,
+        email: Optional[str] = None,
         nin: Optional[str] = None,
         phone_number: Optional[str] = None,
         account_number: Optional[str] = None,
+        account_name: Optional[str] = None,
         bank_name: Optional[str] = None,
         gender: Optional[Gender] = None,
         farming_category: Optional[Union[FarmingCategory, str]] = None,
         additional_info: Optional[str] = None,
         wrs_status: Optional[WRSStatus] = None,
         photo: Optional[UploadFile] = None,
+        id_photo: Optional[UploadFile] = None,
+        years_of_experience: Optional[int] = None,
     ) -> Farmer:
         farmer = await self.db.get(Farmer, farmer_id)
 
@@ -547,10 +659,15 @@ class FarmerService:
                 detail="Cannot edit farmer profile while they have active investments.",
             )
 
-        if nin is not None and (not nin.isdigit() or len(nin) != 11):
+        if nin is not None and not (nin.isascii() and nin.isdigit() and len(nin) == 11):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="NIN must consist of exactly 11 numeric digits.",
+            )
+        if date_of_birth is not None and date_of_birth >= date.today():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Date of birth must be in the past.",
             )
 
         if isinstance(farming_category, str):
@@ -564,16 +681,28 @@ class FarmerService:
                 )
 
         update_fields = {
-            "full_name": full_name,
             "nin": nin,
+            "date_of_birth": date_of_birth,
+            "email": email,
             "phone_number": phone_number,
             "account_number": account_number,
+            "account_name": account_name,
             "bank_name": bank_name,
             "gender": gender,
             "farming_category": farming_category,
             "additional_info": additional_info,
             "wrs_status": wrs_status,
+            "years_of_experience": years_of_experience,
         }
+
+        if first_name is not None:
+            farmer.first_name = first_name
+        if last_name is not None:
+            farmer.last_name = last_name
+        if first_name is not None or last_name is not None:
+            farmer.full_name = f"{farmer.first_name or ''} {farmer.last_name or ''}".strip()
+        elif full_name is not None:
+            farmer.full_name = full_name
 
         for key, value in update_fields.items():
             if value is not None:
@@ -584,6 +713,11 @@ class FarmerService:
                 photo, "collabfarm/farmer_photos"
             )
             farmer.photo = photo_res["secure_url"]
+        if id_photo:
+            id_photo_res = await upload_kyc_document(
+                id_photo, "collabfarm/farmer_ids"
+            )
+            farmer.id_photo = id_photo_res["secure_url"]
 
         await self.db.commit()
         return await self.fetch_farmer_with_relations(farmer.id)

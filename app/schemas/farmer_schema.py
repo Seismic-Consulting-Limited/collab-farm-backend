@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from enum import Enum
 from typing import Any, Optional, Union
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
 class Gender(str, Enum):
@@ -25,7 +25,7 @@ class FarmingCategory(str, Enum):
     FISHERY = "fishery"
     MIXED_FARMING = "mixed_farming"
     POULTRY = "poultry"
-    LIVESTOCK = "livestock",
+    LIVESTOCK = "livestock"
     OTHERS = "others"
 
 
@@ -149,31 +149,41 @@ class FarmerInvestmentRead(BaseModel):
 
 
 class FarmerCreate(BaseModel):
-    full_name: str = Field(..., min_length=2)
+    first_name: str = Field(..., min_length=1)
+    last_name: str = Field(..., min_length=1)
+    date_of_birth: date
+    email: EmailStr
     nin: str = Field(..., description="11-digit National Identification Number")
-    phone_number: str
+    phone_number: Optional[str] = None
     account_number: Optional[str] = None
+    account_name: Optional[str] = None
     bank_name: Optional[str] = None
     gender: Gender
-    farming_category: Optional[FarmingCategory] = Field(
-        None, description="Primary farming category"
-    )
+    farming_category: FarmingCategory = Field(..., description="Primary farming category")
+    years_of_experience: int = Field(..., ge=0)
+    terms_accepted: bool
     wrs_status: WRSStatus = WRSStatus.VERIFIED
     additional_info: Optional[str] = None
-    farms: Optional[list[FarmCreate]] = Field(default_factory=list)
 
     @field_validator("nin")
     @classmethod
     def validate_nin(cls, v: str) -> str:
-        if not v.isdigit() or len(v) != 11:
+        if not (v.isascii() and v.isdigit() and len(v) == 11):
             raise ValueError("NIN must consist of exactly 11 digits.")
         return v
 
-    @field_validator("farms", mode="before")
+    @field_validator("date_of_birth")
     @classmethod
-    def handle_none_farms(cls, value: Any) -> Any:
-        if value is None:
-            return []
+    def validate_date_of_birth(cls, value: date) -> date:
+        if value >= date.today():
+            raise ValueError("Date of birth must be in the past")
+        return value
+
+    @field_validator("terms_accepted")
+    @classmethod
+    def require_terms_acceptance(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError("The farmer must accept the agreement terms")
         return value
 
     @field_validator("gender", "wrs_status", mode="before")
@@ -193,19 +203,25 @@ class FarmerCreate(BaseModel):
 
 class FarmerUpdate(BaseModel):
     full_name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    email: Optional[EmailStr] = None
     nin: Optional[str] = None
     phone_number: Optional[str] = None
     account_number: Optional[str] = None
+    account_name: Optional[str] = None
     bank_name: Optional[str] = None
     gender: Optional[Gender] = None
     farming_category: Optional[FarmingCategory] = None
+    years_of_experience: Optional[int] = Field(None, ge=0)
     additional_info: Optional[str] = None
     wrs_status: Optional[WRSStatus] = None
 
     @field_validator("nin")
     @classmethod
     def validate_nin(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and (not v.isdigit() or len(v) != 11):
+        if v is not None and not (v.isascii() and v.isdigit() and len(v) == 11):
             raise ValueError("NIN must consist of exactly 11 digits.")
         return v
 
@@ -224,22 +240,39 @@ class FarmerUpdate(BaseModel):
         return value
 
 
+class FarmerActivityRead(BaseModel):
+    activity_type: str
+    description: str
+    occurred_at: datetime
+    status: Optional[str] = None
+    amount: Optional[float] = None
+
+
 class FarmerRead(BaseModel):
     id: uuid.UUID
     cooperative_id: uuid.UUID
     full_name: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    email: Optional[EmailStr] = None
     nin: str
-    phone_number: str
+    phone_number: Optional[str] = None
     account_number: Optional[str] = None
+    account_name: Optional[str] = None
     bank_name: Optional[str] = None
     gender: Gender
     farming_category: Optional[FarmingCategory] = None
     photo: Optional[str] = None
+    id_photo: Optional[str] = None
+    years_of_experience: int = 0
+    terms_accepted: bool = False
     additional_info: Optional[str] = None
     wrs_status: WRSStatus
     cooperative: Optional[CooperativeSummary] = None
     farms: list[FarmRead] = Field(default_factory=list)
     farmer_investments: list[FarmerInvestmentRead] = Field(default_factory=list)
+    recent_activities: list[FarmerActivityRead] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     date_added: Optional[str] = None
@@ -267,7 +300,7 @@ class FarmerDirectoryItem(BaseModel):
     full_name: str
     photo: Optional[str] = None
     farming_category: Optional[str] = Field(default="No Farms")
-    phone_number: str
+    phone_number: Optional[str] = None
     date_added: Optional[Union[str, datetime]] = None
     status: str
 
