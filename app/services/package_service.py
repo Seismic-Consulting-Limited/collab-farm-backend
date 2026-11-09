@@ -20,6 +20,7 @@ from app.models.package_model import (
 )
 from app.models.user_model import User, UserRole
 from app.utils.settlement_dates import package_settlement_date
+from app.utils.funding_plan import build_funding_plan
 from app.schemas.package_schema import (
     AssignFarmerSchema,
     PackageCreate,
@@ -40,25 +41,6 @@ def _add_months(value: date, months: int) -> date:
     month = month_index % 12 + 1
     day = min(value.day, calendar.monthrange(year, month)[1])
     return date(year, month, day)
-
-
-def _funding_plan(amount: float) -> list[dict]:
-    tranches = [
-        ("T1 Project preparation", 30, "Approved land preparation, supplier deposits and initial farming inputs", ["Cooperative accountability agreement signed", "Supplier quotations verified", "Farmer participation agreements signed"]),
-        ("T2 Planting", 30, "Released after evidence confirms preparation and input delivery milestones", ["Input delivery receipts uploaded", "Land preparation inspection report approved"]),
-        ("T3 Crop maintenance", 25, "Released after relevant farming activities are verified", ["Planting report with photos and GPS", "Field inspection completed"]),
-        ("T4 Harvest", 15, "Harvesting, storage and other agreed expenses", ["Crop maintenance report approved", "Storage arrangements confirmed"]),
-    ]
-    return [
-        {
-            "tranche": title,
-            "share_percentage": share,
-            "amount": round(amount * share / 100, 2),
-            "description": description,
-            "released_after": conditions,
-        }
-        for title, share, description, conditions in tranches
-    ]
 
 
 class PackageService:
@@ -316,7 +298,7 @@ class PackageService:
                     expected_output=pkg.expected_output,
                     expected_return_min=float(pkg.expected_return_min),
                     expected_return_max=float(pkg.expected_return_max),
-                    funding_plan=_funding_plan(fund_amt),
+                    funding_plan=build_funding_plan(fund_amt),
                     farming_cycle=pkg.farming_cycle,
                     short_description=pkg.short_description,
                     tenure_months=pkg.tenure_months,
@@ -490,7 +472,7 @@ class PackageService:
             expected_output=package.expected_output,
             expected_return_min=float(package.expected_return_min),
             expected_return_max=float(package.expected_return_max),
-            funding_plan=_funding_plan(fund_amount),
+            funding_plan=build_funding_plan(fund_amount),
             tenure_months=package.tenure_months,
             expected_payback_date=package_settlement_date(package),
             expected_roi=expected_roi,

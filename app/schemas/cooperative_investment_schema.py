@@ -11,6 +11,28 @@ class InvestmentStatus(str, Enum):
     OVERDUE = "overdue"
 
 
+class CooperativeInvestmentDisplayStatus(str, Enum):
+    ONGOING = "ongoing"
+    COMPLETED = "completed"
+    OVERDUE = "overdue"
+
+
+class FundingTrancheStatus(str, Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
+
+class InvestmentFundingTranche(BaseModel):
+    tranche: str
+    share_percentage: float
+    amount: float
+    released_amount: float
+    status: FundingTrancheStatus
+    description: str
+    released_after: list[str]
+
+
 class SettlementStatus(str, Enum):
     PENDING = "PENDING"
     SETTLED = "SETTLED"
@@ -38,8 +60,11 @@ class CooperativeInvestmentList(BaseModel):
     package_title: str
     package_category: str | None = None
     amount: float
+    amount_invested: float
+    expected_settlement_amount: float
+    expected_settlement_date: date | None = None
     date_invested: datetime
-    status: InvestmentStatus
+    status: CooperativeInvestmentDisplayStatus
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -62,6 +87,11 @@ class CooperativeInvestmentDetail(BaseModel):
     expected_settlement_amount: float
     settlement_status: SettlementStatus
     status: InvestmentStatus
+    package_total_amount: float
+    total_released: float
+    release_percentage: float
+    current_stage: str
+    tranches: list[InvestmentFundingTranche]
     model_config = ConfigDict(from_attributes=True)
 
 

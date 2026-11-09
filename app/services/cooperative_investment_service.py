@@ -6,14 +6,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.cooperative_investment_model import Investment, InvestmentStatus
+from app.models.disbursement_model import DisbursementStatus
 from app.models.package_model import Package
 from app.models.user_model import User
 from app.models.wallet_model import Transaction, TransactionType, Wallet
 from app.utils.settlement_dates import package_settlement_date
+from app.utils.funding_plan import build_funding_plan
 from app.schemas.cooperative_investment_schema import (
     CooperativeInvestmentDetail,
+    CooperativeInvestmentDisplayStatus,
     CooperativeInvestmentList,
     CooperativeInvestmentSummary,
+    FundingTrancheStatus,
+    InvestmentFundingTranche,
     Metrics,
     PaginatedCooperativeInvestments,
     SettlementStatus,
@@ -134,7 +139,7 @@ class CooperativeInvestmentService:
         offset = (page - 1) * size
         items_stmt = (
             base_query.options(
-                selectinload(Investment.package),
+                selectinload(Investment.package).selectinload(Package.disbursements),
                 selectinload(Investment.investor),
             )
             .order_by(Investment.created_at.desc())
@@ -144,9 +149,33 @@ class CooperativeInvestmentService:
 
         items_res = await self.db.execute(items_stmt)
         investments = items_res.scalars().all()
+        today = date.today()
 
-        formatted_items = [
-            CooperativeInvestmentList(
+        formatted_items = []
+        for inv in investments:
+            package = inv.package
+            settlement_date = package_settlement_date(package)
+            status_value = inv.status.value if hasattr(inv.status, "value") else str(inv.status)
+            if status_value.lower() == "repaid":
+                display_status = CooperativeInvestmentDisplayStatus.COMPLETED
+            elif status_value.lower() == "pending":
+                display_status = CooperativeInvestmentDisplayStatus.ONGOING
+            elif status_value.lower() == "overdue" or (
+                settlement_date is not None and settlement_date < today
+            ):
+                display_status = CooperativeInvestmentDisplayStatus.OVERDUE
+            else:
+                display_status = CooperativeInvestmentDisplayStatus.ONGOING
+
+            roi_pct = float(package.expected_roi or 0.0)
+            cooperative_share_pct = float(package.cooperative_share or 0.0)
+            investor_roi_pct = max(roi_pct - cooperative_share_pct, 0.0)
+            amount_invested = float(inv.amount or 0.0)
+            expected_settlement_amount = round(
+                amount_invested * (1 + investor_roi_pct / 100), 2
+            )
+
+            formatted_items.append(CooperativeInvestmentList(
                 id=inv.id,
                 investor_id_code=getattr(
                     inv.investor, "display_id", f"LN-25-{str(inv.investor_id)[:5]}"
@@ -155,16 +184,17 @@ class CooperativeInvestmentService:
                 )
                 or inv.investor.email,
                 investor_avatar=getattr(inv.investor, "avatar_url", None),
-                package_title=inv.package.title,
+                package_title=package.title,
                 package_category=getattr(
-                    inv.package, "category", "Crop Farming"
+                    package, "category", "Crop Farming"
                 ),
-                amount=inv.amount,
+                amount=amount_invested,
+                amount_invested=amount_invested,
+                expected_settlement_amount=expected_settlement_amount,
+                expected_settlement_date=settlement_date,
                 date_invested=inv.created_at,
-                status=inv.status,
-            )
-            for inv in investments
-        ]
+                status=display_status,
+            ))
 
         return PaginatedCooperativeInvestments(
             total=total, page=page, size=size, items=formatted_items
@@ -249,6 +279,57 @@ class CooperativeInvestmentService:
             1 + investor_roi_pct / 100
         )
 
+        package_amount = float(package.fund_amount or 0.0)
+        released_statuses = {
+            DisbursementStatus.DISBURSED,
+            DisbursementStatus.COMPLETED,
+        }
+        total_released = sum(
+            float(disbursement.amount or 0.0)
+            for disbursement in package.disbursements
+            if disbursement.status in released_statuses
+        )
+        capped_released = min(total_released, package_amount)
+        funding_plan = build_funding_plan(package_amount)
+        tranches = []
+        cumulative_amount = 0.0
+        current_stage = "All tranches released"
+        has_unreleased_tranche = False
+
+        for tranche in funding_plan:
+            tranche_amount = float(tranche["amount"])
+            tranche_start = cumulative_amount
+            tranche_end = tranche_start + tranche_amount
+            released_in_tranche = min(
+                max(capped_released - tranche_start, 0.0), tranche_amount
+            )
+
+            if released_in_tranche >= tranche_amount:
+                tranche_status = FundingTrancheStatus.COMPLETED
+            elif released_in_tranche > 0:
+                tranche_status = FundingTrancheStatus.IN_PROGRESS
+            else:
+                tranche_status = FundingTrancheStatus.PENDING
+
+            if not has_unreleased_tranche and capped_released < tranche_end:
+                current_stage = tranche["tranche"]
+                has_unreleased_tranche = True
+
+            tranches.append(
+                InvestmentFundingTranche(
+                    **tranche,
+                    released_amount=round(released_in_tranche, 2),
+                    status=tranche_status,
+                )
+            )
+            cumulative_amount = tranche_end
+
+        release_percentage = (
+            round(capped_released / package_amount * 100, 2)
+            if package_amount > 0
+            else 0.0
+        )
+
         return CooperativeInvestmentDetail(
             id=inv.id,
             investor_id_code=getattr(
@@ -276,4 +357,9 @@ class CooperativeInvestmentService:
             settlement_status=settlement_status,
 
             status=inv.status,
+            package_total_amount=round(package_amount, 2),
+            total_released=round(total_released, 2),
+            release_percentage=release_percentage,
+            current_stage=current_stage,
+            tranches=tranches,
         )
