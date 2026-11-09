@@ -76,6 +76,9 @@ class CooperativeProfileBase(BaseModel):
     state: str
     registration_certificate_file: str
     proof_of_address_file: str
+    account_number: Optional[str] = None
+    bank_name: Optional[str] = None
+    account_name: Optional[str] = None
 
 
 class CooperativeProfileCreate(CooperativeProfileBase):
@@ -92,6 +95,9 @@ class CooperativeProfileUpdate(BaseModel):
     state: Optional[str] = None
     registration_certificate_file: Optional[str] = None
     proof_of_address_file: Optional[str] = None
+    account_number: Optional[str] = None
+    bank_name: Optional[str] = None
+    account_name: Optional[str] = None
 
 
 class CooperativeProfileRead(CooperativeProfileBase):

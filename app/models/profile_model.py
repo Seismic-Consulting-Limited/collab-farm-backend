@@ -84,6 +84,9 @@ class CooperativeProfile(Base, TimestampMixin):
     proof_of_address_file: Mapped[str] = mapped_column(
         String, nullable=False
     )
+    account_number: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    bank_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    account_name: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
 
     user: Mapped["User"] = relationship(
         "User", back_populates="cooperative_profile"

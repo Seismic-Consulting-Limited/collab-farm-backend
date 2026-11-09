@@ -135,6 +135,9 @@ class ProfileService:
         address: str,
         lga: str,
         state: str,
+        account_number: str,
+        bank_name: str,
+        account_name: str,
         registration_certificate_file: UploadFile,
         proof_of_address_file: UploadFile,
     ) -> dict:
@@ -166,11 +169,14 @@ class ProfileService:
             address=address,
             lga=lga,
             state=state,
+            account_number=account_number,
+            bank_name=bank_name,
+            account_name=account_name,
             registration_certificate_file=cert_file_res["secure_url"],
             proof_of_address_file=proof_file_res["secure_url"],
         )
 
-        user.verification_status = VerificationStatus.APPROVED
+        user.verification_status = VerificationStatus.PENDING
 
         self.db.add(profile)
         await self.db.commit()
@@ -178,7 +184,7 @@ class ProfileService:
 
         return {
             "status": "success",
-            "message": "Cooperative profile submitted and account verified successfully.",
+            "message": "Cooperative profile submitted and is awaiting admin review.",
             "verification_status": user.verification_status,
         }
     
