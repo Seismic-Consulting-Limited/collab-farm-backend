@@ -1,6 +1,7 @@
 import uuid
 from datetime import date, datetime
 from typing import List, Optional
+from math import isclose
 from pydantic import (
     AliasChoices,
     BaseModel,
@@ -31,22 +32,69 @@ class WhatsIncludedItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PackageFarmerAllocationCreate(BaseModel):
+    farmer_id: uuid.UUID
+    allocated_amount: float = Field(..., gt=0)
+
+
+class FundingPlanTranche(BaseModel):
+    tranche: str
+    share_percentage: float
+    amount: float
+    description: str
+    released_after: List[str]
+
+
 class PackageCreate(BaseModel):
-    title: str
+    title: str = Field(..., validation_alias=AliasChoices("title", "package_name"))
     package_type: PackageType
     category: PackageCategory
     fund_amount: float
-    farming_cycle: str
+    start_date: date
+    end_date: date
+    funding_closes_on: date
+    minimum_funding_target: float = Field(..., gt=0)
+    maximum_investment: float = Field(..., gt=0)
+    minimum_investment: float = Field(..., gt=0)
+    expected_output: str
+    expected_return_min: float = Field(..., ge=0, le=100)
+    expected_return_max: float = Field(..., ge=0, le=100)
+    farming_cycle: Optional[str] = None
     short_description: str
     tenure_months: int
-    expected_payback_date: date
-    expected_roi: float = Field(..., description="Percentage ROI e.g. 15.0")
-    cooperative_share: float = Field(..., description="Cooperative cut % e.g. 5.0")
+    expected_roi: float = Field(..., ge=0, description="Percentage ROI e.g. 15.0")
+    cooperative_share: float = Field(..., ge=0, le=100, description="Cooperative cut percentage")
     whats_included: List[WhatsIncludedItem] = Field(
         ...,
         min_length=1,
         validation_alias=AliasChoices("whats_included", "whatsIncluded"),
     )
+    farmers: List[PackageFarmerAllocationCreate] = Field(..., min_length=1)
+
+    @model_validator(mode="after")
+    def validate_package_dates_and_amounts(self):
+        if self.end_date <= self.start_date:
+            raise ValueError("end_date must be after start_date")
+        if self.funding_closes_on >= self.start_date:
+            raise ValueError("funding_closes_on must be before start_date")
+        if self.minimum_investment > self.maximum_investment:
+            raise ValueError("minimum_investment cannot exceed maximum_investment")
+        if self.maximum_investment > self.fund_amount:
+            raise ValueError("maximum_investment cannot exceed total package amount")
+        if self.minimum_funding_target > self.fund_amount:
+            raise ValueError("minimum_funding_target cannot exceed total package amount")
+        if self.expected_return_min > self.expected_return_max:
+            raise ValueError("expected_return_min cannot exceed expected_return_max")
+        if len({f.farmer_id for f in self.farmers}) != len(self.farmers):
+            raise ValueError("Each farmer can only be selected once")
+        if not isclose(
+            sum(f.allocated_amount for f in self.farmers),
+            self.fund_amount,
+            rel_tol=0,
+            abs_tol=0.01,
+        ):
+            raise ValueError("Farmer allocations must add up to the total package amount")
+        return self
 
     @model_validator(mode="after")
     def validate_fund_amount_by_type(self):
@@ -118,6 +166,16 @@ class PackageDetailRead(BaseModel):
     farming_cycle: str
     short_description: str
     fund_amount: float
+    start_date: date
+    end_date: date
+    funding_closes_on: date
+    minimum_funding_target: float
+    maximum_investment: float
+    minimum_investment: float
+    expected_output: str
+    expected_return_min: float
+    expected_return_max: float
+    funding_plan: List[FundingPlanTranche]
     tenure_months: int
     expected_payback_date: date
     expected_roi: float
@@ -128,6 +186,7 @@ class PackageDetailRead(BaseModel):
     investors_count: int = 0
     status: PackageStatus
     financial_summary: PackageFinancialSummary
+    farmers: List[PackageFarmerDetail] = Field(default_factory=list)
     assigned_farmers: List[PackageFarmerDetail] = []
     investors: List[PackageInvestorDetail] = []
 
@@ -155,6 +214,16 @@ class PackageRead(BaseModel):
     package_type: PackageType
     category: PackageCategory
     fund_amount: float
+    start_date: date
+    end_date: date
+    funding_closes_on: date
+    minimum_funding_target: float
+    maximum_investment: float
+    minimum_investment: float
+    expected_output: str
+    expected_return_min: float
+    expected_return_max: float
+    funding_plan: List[FundingPlanTranche]
     farming_cycle: str
     short_description: str
     tenure_months: int
@@ -182,6 +251,15 @@ class PackageUpdate(BaseModel):
     package_type: Optional[PackageType] = None
     category: Optional[PackageCategory] = None
     fund_amount: Optional[float] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    funding_closes_on: Optional[date] = None
+    minimum_funding_target: Optional[float] = None
+    maximum_investment: Optional[float] = None
+    minimum_investment: Optional[float] = None
+    expected_output: Optional[str] = None
+    expected_return_min: Optional[float] = None
+    expected_return_max: Optional[float] = None
     farming_cycle: Optional[str] = None
     short_description: Optional[str] = None
     tenure_months: Optional[int] = None

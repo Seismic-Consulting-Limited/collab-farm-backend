@@ -42,6 +42,25 @@ def _add_months(value: date, months: int) -> date:
     return date(year, month, day)
 
 
+def _funding_plan(amount: float) -> list[dict]:
+    tranches = [
+        ("T1 Project preparation", 30, "Approved land preparation, supplier deposits and initial farming inputs", ["Cooperative accountability agreement signed", "Supplier quotations verified", "Farmer participation agreements signed"]),
+        ("T2 Planting", 30, "Released after evidence confirms preparation and input delivery milestones", ["Input delivery receipts uploaded", "Land preparation inspection report approved"]),
+        ("T3 Crop maintenance", 25, "Released after relevant farming activities are verified", ["Planting report with photos and GPS", "Field inspection completed"]),
+        ("T4 Harvest", 15, "Harvesting, storage and other agreed expenses", ["Crop maintenance report approved", "Storage arrangements confirmed"]),
+    ]
+    return [
+        {
+            "tranche": title,
+            "share_percentage": share,
+            "amount": round(amount * share / 100, 2),
+            "description": description,
+            "released_after": conditions,
+        }
+        for title, share, description, conditions in tranches
+    ]
+
+
 class PackageService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -76,12 +95,60 @@ class PackageService:
                 detail="Only Cooperatives can create investment packages.",
             )
 
-        package_data = payload.model_dump(exclude={"whats_included"})
+        package_data = payload.model_dump(exclude={"whats_included", "farmers"})
+        package_data["expected_payback_date"] = payload.end_date
+        package_data["farming_cycle"] = payload.farming_cycle or (
+            f"{payload.start_date.isoformat()} to {payload.end_date.isoformat()}"
+        )
         package_data["whats_included"] = [
             item.model_dump() for item in payload.whats_included or []
         ]
         package = Package(cooperative_id=user.id, **package_data)
         self.db.add(package)
+        await self.db.flush()
+
+        farmer_ids = [entry.farmer_id for entry in payload.farmers]
+        farmers_result = await self.db.execute(
+            select(Farmer).where(
+                Farmer.id.in_(farmer_ids), Farmer.cooperative_id == user.id
+            )
+        )
+        farmers = {farmer.id: farmer for farmer in farmers_result.scalars().all()}
+        if len(farmers) != len(set(farmer_ids)):
+            await self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Every selected farmer must belong to your cooperative.",
+            )
+
+        for allocation in payload.farmers:
+            farmer = farmers[allocation.farmer_id]
+            assignment = PackageFarmer(
+                package_id=package.id,
+                farmer_id=farmer.id,
+                allocated_amount=allocation.allocated_amount,
+                tenure_months=payload.tenure_months,
+                expected_roi=payload.expected_roi,
+                status=FarmerPackageStatus.PENDING,
+            )
+            self.db.add(assignment)
+            farmer_user_id = getattr(farmer, "user_id", farmer.id)
+            self.db.add(
+                Disbursement(
+                    package_id=package.id,
+                    cooperative_id=user.id,
+                    farmer_id=farmer_user_id,
+                    recorded_by_id=user.id,
+                    amount=allocation.allocated_amount,
+                    transaction_reference=(
+                        f"DSB-{str(package.id)[:4].upper()}-"
+                        f"{str(farmer.id)[:4].upper()}-{uuid.uuid4().hex[:6].upper()}"
+                    ),
+                    status=DisbursementStatus.PENDING,
+                    notes=f"Auto-generated pending disbursement for package '{package.title}'",
+                )
+            )
+
         await self.db.commit()
         await self.db.refresh(package)
         return package
@@ -240,6 +307,16 @@ class PackageService:
                     package_type=pkg.package_type,
                     category=pkg.category,
                     fund_amount=fund_amt,
+                    start_date=pkg.start_date,
+                    end_date=pkg.end_date,
+                    funding_closes_on=pkg.funding_closes_on,
+                    minimum_funding_target=float(pkg.minimum_funding_target),
+                    maximum_investment=float(pkg.maximum_investment),
+                    minimum_investment=float(pkg.minimum_investment),
+                    expected_output=pkg.expected_output,
+                    expected_return_min=float(pkg.expected_return_min),
+                    expected_return_max=float(pkg.expected_return_max),
+                    funding_plan=_funding_plan(fund_amt),
                     farming_cycle=pkg.farming_cycle,
                     short_description=pkg.short_description,
                     tenure_months=pkg.tenure_months,
@@ -404,6 +481,16 @@ class PackageService:
             farming_cycle=package.farming_cycle,
             short_description=package.short_description,
             fund_amount=fund_amount,
+            start_date=package.start_date,
+            end_date=package.end_date,
+            funding_closes_on=package.funding_closes_on,
+            minimum_funding_target=float(package.minimum_funding_target),
+            maximum_investment=float(package.maximum_investment),
+            minimum_investment=float(package.minimum_investment),
+            expected_output=package.expected_output,
+            expected_return_min=float(package.expected_return_min),
+            expected_return_max=float(package.expected_return_max),
+            funding_plan=_funding_plan(fund_amount),
             tenure_months=package.tenure_months,
             expected_payback_date=package_settlement_date(package),
             expected_roi=expected_roi,
@@ -418,6 +505,7 @@ class PackageService:
                 total_disbursed_to_farmers=total_disbursed,
                 remaining_balance=remaining_balance,
             ),
+            farmers=assigned_farmers,
             assigned_farmers=assigned_farmers,
             investors=investors,
         )
@@ -502,6 +590,59 @@ class PackageService:
 
         target_type = update_data.get("package_type", package.package_type)
         target_amount = update_data.get("fund_amount", package.fund_amount)
+
+        start_date = update_data.get("start_date", package.start_date)
+        end_date = update_data.get("end_date", package.end_date)
+        funding_closes_on = update_data.get(
+            "funding_closes_on", package.funding_closes_on
+        )
+        if end_date <= start_date:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="end_date must be after start_date.",
+            )
+        if funding_closes_on >= start_date:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="funding_closes_on must be before start_date.",
+            )
+        minimum_investment = update_data.get(
+            "minimum_investment", package.minimum_investment
+        )
+        maximum_investment = update_data.get(
+            "maximum_investment", package.maximum_investment
+        )
+        minimum_funding_target = update_data.get(
+            "minimum_funding_target", package.minimum_funding_target
+        )
+        expected_return_min = update_data.get(
+            "expected_return_min", package.expected_return_min
+        )
+        expected_return_max = update_data.get(
+            "expected_return_max", package.expected_return_max
+        )
+        if minimum_investment > maximum_investment:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="minimum_investment cannot exceed maximum_investment.",
+            )
+        if maximum_investment > target_amount:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="maximum_investment cannot exceed total package amount.",
+            )
+        if minimum_funding_target > target_amount:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="minimum_funding_target cannot exceed total package amount.",
+            )
+        if expected_return_min > expected_return_max:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="expected_return_min cannot exceed expected_return_max.",
+            )
+        if "end_date" in update_data and "expected_payback_date" not in update_data:
+            update_data["expected_payback_date"] = end_date
 
         min_amounts = {
             PackageType.STARTER: 100.00,
