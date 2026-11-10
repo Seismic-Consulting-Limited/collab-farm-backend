@@ -302,6 +302,7 @@ class CooperativeInvestmentService:
                 }
                 for disbursement in released_disbursements
             ],
+            category=package.category,
         )
         tranches = [
             InvestmentFundingTranche(**tranche)

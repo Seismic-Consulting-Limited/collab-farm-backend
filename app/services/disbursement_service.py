@@ -62,6 +62,7 @@ class DisbursementService:
                 }
                 for disbursement in released_disbursements
             ],
+            category=package.category,
         )
 
     @staticmethod

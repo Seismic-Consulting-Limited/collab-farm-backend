@@ -29,6 +29,11 @@ class PackageSummarySchema(BaseModel):
     id: uuid.UUID
     title: str
     category: str
+    package_total_amount: float
+    expected_return_percentage: float
+    expected_return_amount: float
+    expected_settlement_amount: float
+    investors_to_be_settled: int
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -63,6 +68,34 @@ class SettlementPaginatedResponse(BaseModel):
     page: int
     page_size: int
     items: List[SettlementListItemResponse]
+
+
+class InvestorToSettleSchema(BaseModel):
+    investor_id: uuid.UUID
+    investor_name: str
+    amount_invested: float
+    expected_return_amount: float
+    expected_settlement_amount: float
+    status: str
+
+
+class PackageSettlementSummarySchema(BaseModel):
+    package_id: uuid.UUID
+    package_name: str
+    package_category: str
+    package_total_amount: float
+    expected_return_percentage: float
+    expected_return_amount: float
+    expected_settlement_amount: float
+    investors_to_be_settled: int
+    investors: List[InvestorToSettleSchema]
+
+
+class PackageSettlementPaginatedResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: List[PackageSettlementSummarySchema]
 
 
 class SettlementStatusUpdateSchema(BaseModel):

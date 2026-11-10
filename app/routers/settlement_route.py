@@ -11,6 +11,7 @@ from app.schemas.settlement_schema import (
     SettlementDetailResponse,
     SettlementMetricsResponse,
     SettlementPaginatedResponse,
+    PackageSettlementPaginatedResponse,
     SettlementStatusUpdateSchema,
 )
 from app.services.settlement_service import SettlementService
@@ -61,6 +62,31 @@ async def list_settlements(
         page_size=page_size,
     )
     return SettlementPaginatedResponse(
+        total=total,
+        page=page,
+        page_size=page_size,
+        items=items,
+    )
+
+
+@router.get(
+    "/packages",
+    response_model=PackageSettlementPaginatedResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def list_package_settlements(
+    search: Optional[str] = Query(None, description="Search package or investor"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    items, total = await SettlementService(session).get_package_settlements(
+        search=search,
+        page=page,
+        page_size=page_size,
+    )
+    return PackageSettlementPaginatedResponse(
         total=total,
         page=page,
         page_size=page_size,
