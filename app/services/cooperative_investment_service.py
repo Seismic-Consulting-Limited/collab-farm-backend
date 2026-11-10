@@ -11,13 +11,12 @@ from app.models.package_model import Package
 from app.models.user_model import User
 from app.models.wallet_model import Transaction, TransactionType, Wallet
 from app.utils.settlement_dates import package_settlement_date
-from app.utils.funding_plan import build_funding_plan
+from app.utils.funding_plan import calculate_funding_progress
 from app.schemas.cooperative_investment_schema import (
     CooperativeInvestmentDetail,
     CooperativeInvestmentDisplayStatus,
     CooperativeInvestmentList,
     CooperativeInvestmentSummary,
-    FundingTrancheStatus,
     InvestmentFundingTranche,
     Metrics,
     PaginatedCooperativeInvestments,
@@ -279,56 +278,35 @@ class CooperativeInvestmentService:
             1 + investor_roi_pct / 100
         )
 
-        package_amount = float(package.fund_amount or 0.0)
         released_statuses = {
             DisbursementStatus.DISBURSED,
             DisbursementStatus.COMPLETED,
         }
-        total_released = sum(
-            float(disbursement.amount or 0.0)
+        released_disbursements = [
+            disbursement
             for disbursement in package.disbursements
             if disbursement.status in released_statuses
+        ]
+        total_released = sum(
+            float(disbursement.amount or 0.0)
+            for disbursement in released_disbursements
         )
-        capped_released = min(total_released, package_amount)
-        funding_plan = build_funding_plan(package_amount)
-        tranches = []
-        cumulative_amount = 0.0
-        current_stage = "All tranches released"
-        has_unreleased_tranche = False
-
-        for tranche in funding_plan:
-            tranche_amount = float(tranche["amount"])
-            tranche_start = cumulative_amount
-            tranche_end = tranche_start + tranche_amount
-            released_in_tranche = min(
-                max(capped_released - tranche_start, 0.0), tranche_amount
-            )
-
-            if released_in_tranche >= tranche_amount:
-                tranche_status = FundingTrancheStatus.COMPLETED
-            elif released_in_tranche > 0:
-                tranche_status = FundingTrancheStatus.IN_PROGRESS
-            else:
-                tranche_status = FundingTrancheStatus.PENDING
-
-            if not has_unreleased_tranche and capped_released < tranche_end:
-                current_stage = tranche["tranche"]
-                has_unreleased_tranche = True
-
-            tranches.append(
-                InvestmentFundingTranche(
-                    **tranche,
-                    released_amount=round(released_in_tranche, 2),
-                    status=tranche_status,
-                )
-            )
-            cumulative_amount = tranche_end
-
-        release_percentage = (
-            round(capped_released / package_amount * 100, 2)
-            if package_amount > 0
-            else 0.0
+        package_amount = float(package.fund_amount or 0.0)
+        funding_progress = calculate_funding_progress(
+            package_amount,
+            total_released,
+            [
+                {
+                    "amount": disbursement.amount,
+                    "released_at": disbursement.disbursement_date,
+                }
+                for disbursement in released_disbursements
+            ],
         )
+        tranches = [
+            InvestmentFundingTranche(**tranche)
+            for tranche in funding_progress["tranches"]
+        ]
 
         return CooperativeInvestmentDetail(
             id=inv.id,
@@ -358,8 +336,8 @@ class CooperativeInvestmentService:
 
             status=inv.status,
             package_total_amount=round(package_amount, 2),
-            total_released=round(total_released, 2),
-            release_percentage=release_percentage,
-            current_stage=current_stage,
+            total_released=funding_progress["total_released"],
+            release_percentage=funding_progress["release_percentage"],
+            current_stage=funding_progress["current_stage"],
             tranches=tranches,
         )

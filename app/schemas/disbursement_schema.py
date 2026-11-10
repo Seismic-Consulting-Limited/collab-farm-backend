@@ -18,6 +18,9 @@ class PackageSummarySchema(BaseModel):
     id: str = Field(validation_alias="package_code")
     title: str
     category: str
+    package_total_amount: Optional[float] = None
+    farmers_count: Optional[int] = None
+    current_tranche: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -45,6 +48,18 @@ class DisbursementListItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class DisbursementTrancheSchema(BaseModel):
+    tranche: str
+    share_percentage: float
+    amount: float
+    released_amount: float
+    status: str
+    passed: bool
+    passed_at: Optional[datetime] = None
+    description: str
+    released_after: List[str]
+
+
 class DisbursementDetailResponse(BaseModel):
     id: uuid.UUID
     farmer: FarmerSummarySchema
@@ -55,8 +70,11 @@ class DisbursementDetailResponse(BaseModel):
     recorded_by_name: str
     transaction_reference: str
     notes: Optional[str] = None
+    tranches: List[DisbursementTrancheSchema] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
+
+
 
 
 class DisbursementPaginatedResponse(BaseModel):

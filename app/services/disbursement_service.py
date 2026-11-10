@@ -14,8 +14,13 @@ from app.models.user_model import User
 from app.schemas.disbursement_schema import (
     DisbursementMetricsResponse,
     DisbursementDetailResponse,
+    DisbursementListItemResponse,
+    DisbursementTrancheSchema,
+    FarmerSummarySchema,
+    PackageSummarySchema,
     DisbursementStatusUpdateSchema,
 )
+from app.utils.funding_plan import calculate_funding_progress
 
 
 def _get_user_display_name(user: Optional[User]) -> str:
@@ -32,6 +37,32 @@ def _get_user_display_name(user: Optional[User]) -> str:
 class DisbursementService:
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    @staticmethod
+    def _package_funding_progress(package: Package) -> dict:
+        released_statuses = {
+            DisbursementStatus.DISBURSED,
+            DisbursementStatus.COMPLETED,
+        }
+        released_disbursements = [
+            disbursement
+            for disbursement in package.disbursements
+            if disbursement.status in released_statuses
+        ]
+        total_released = sum(
+            float(disbursement.amount or 0) for disbursement in released_disbursements
+        )
+        return calculate_funding_progress(
+            float(package.fund_amount or 0),
+            total_released,
+            [
+                {
+                    "amount": disbursement.amount,
+                    "released_at": disbursement.disbursement_date,
+                }
+                for disbursement in released_disbursements
+            ],
+        )
 
     @staticmethod
     async def create_auto_disbursement_on_assignment(
@@ -119,12 +150,13 @@ class DisbursementService:
         end_date: Optional[datetime] = None,
         page: int = 1,
         page_size: int = 10,
-    ) -> Tuple[List[Disbursement], int]:
+    ) -> Tuple[List[DisbursementListItemResponse], int]:
         query = (
             select(Disbursement)
             .options(
                 selectinload(Disbursement.farmer),
-                selectinload(Disbursement.package),
+                selectinload(Disbursement.package).selectinload(Package.disbursements),
+                selectinload(Disbursement.package).selectinload(Package.package_farmers),
             )
             .join(Farmer, Disbursement.farmer_id == Farmer.id)
             .join(Package, Disbursement.package_id == Package.id)
@@ -161,7 +193,36 @@ class DisbursementService:
             offset).limit(page_size)
 
         result = await self.session.execute(query)
-        return list(result.scalars().all()), total
+        disbursements = result.scalars().all()
+        items = []
+        for disbursement in disbursements:
+            package = disbursement.package
+            progress = self._package_funding_progress(package)
+            items.append(
+                DisbursementListItemResponse(
+                    id=disbursement.id,
+                    farmer=FarmerSummarySchema(
+                        id=disbursement.farmer.id,
+                        full_name=disbursement.farmer.full_name,
+                        farmer_code=getattr(disbursement.farmer, "farmer_code", None),
+                        avatar_url=getattr(disbursement.farmer, "photo", None),
+                    ),
+                    package=PackageSummarySchema(
+                        package_code=package.package_code,
+                        title=package.title,
+                        category=str(getattr(package.category, "value", package.category)),
+                        package_total_amount=float(package.fund_amount or 0),
+                        farmers_count=len(package.package_farmers),
+                        current_tranche=progress["current_stage"],
+                    ),
+                    amount=float(disbursement.amount or 0),
+                    disbursement_date=disbursement.disbursement_date,
+                    status=disbursement.status,
+                    transaction_reference=disbursement.transaction_reference,
+                    notes=disbursement.notes,
+                )
+            )
+        return items, total
 
     async def get_disbursement_detail(
         self, disbursement_id: uuid.UUID, cooperative_id: uuid.UUID
@@ -170,7 +231,8 @@ class DisbursementService:
             select(Disbursement)
             .options(
                 selectinload(Disbursement.farmer),
-                selectinload(Disbursement.package),
+                selectinload(Disbursement.package).selectinload(Package.disbursements),
+                selectinload(Disbursement.package).selectinload(Package.package_farmers),
                 selectinload(Disbursement.recorded_by),
             )
             .where(
@@ -184,6 +246,9 @@ class DisbursementService:
         if not disbursement:
             raise ValueError("Disbursement record not found.")
 
+        package = disbursement.package
+        progress = self._package_funding_progress(package)
+
         return DisbursementDetailResponse(
             id=disbursement.id,
             farmer={
@@ -191,17 +256,24 @@ class DisbursementService:
                 "full_name": disbursement.farmer.full_name,
                 "photo": getattr(disbursement.farmer, "photo", None),
             },
-            package={
-                "package_code": disbursement.package.package_code,
-                "title": disbursement.package.title,
-                "category": disbursement.package.category,
-            },
+            package=PackageSummarySchema(
+                package_code=package.package_code,
+                title=package.title,
+                category=str(getattr(package.category, "value", package.category)),
+                package_total_amount=float(package.fund_amount or 0),
+                farmers_count=len(package.package_farmers),
+                current_tranche=progress["current_stage"],
+            ),
             amount=disbursement.amount,
             disbursement_date=disbursement.disbursement_date,
             status=disbursement.status,
             recorded_by_name=_get_user_display_name(disbursement.recorded_by),
             transaction_reference=disbursement.transaction_reference,
             notes=disbursement.notes,
+            tranches=[
+                DisbursementTrancheSchema(**tranche)
+                for tranche in progress["tranches"]
+            ],
         )
 
     async def update_status(

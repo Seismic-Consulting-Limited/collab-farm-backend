@@ -29,6 +29,8 @@ class InvestmentFundingTranche(BaseModel):
     amount: float
     released_amount: float
     status: FundingTrancheStatus
+    passed: bool
+    passed_at: datetime | None = None
     description: str
     released_after: list[str]
 
