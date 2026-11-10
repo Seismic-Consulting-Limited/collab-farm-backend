@@ -214,6 +214,10 @@ class DisbursementService:
                         package_total_amount=float(package.fund_amount or 0),
                         farmers_count=len(package.package_farmers),
                         current_tranche=progress["current_stage"],
+                        tranches=[
+                            DisbursementTrancheSchema(**tranche)
+                            for tranche in progress["tranches"]
+                        ],
                     ),
                     amount=float(disbursement.amount or 0),
                     disbursement_date=disbursement.disbursement_date,
@@ -263,6 +267,10 @@ class DisbursementService:
                 package_total_amount=float(package.fund_amount or 0),
                 farmers_count=len(package.package_farmers),
                 current_tranche=progress["current_stage"],
+                tranches=[
+                    DisbursementTrancheSchema(**tranche)
+                    for tranche in progress["tranches"]
+                ],
             ),
             amount=disbursement.amount,
             disbursement_date=disbursement.disbursement_date,

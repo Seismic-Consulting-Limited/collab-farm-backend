@@ -117,5 +117,8 @@ def calculate_funding_progress(
             round(capped_released / amount * 100, 2) if amount > 0 else 0.0
         ),
         "current_stage": current_stage,
-        "tranches": tranches,
+        "tranches": [
+            {**tranche, "is_current": tranche["tranche"] == current_stage}
+            for tranche in tranches
+        ],
     }
