@@ -30,6 +30,7 @@ from app.schemas.investors_investment_schema import (
     YourInvestmentDetails,
     SettlementInformation,
 )
+from app.services.notification_service import add_notification
 
 
 class InvestmentService:
@@ -321,6 +322,18 @@ class InvestmentService:
             status=TransactionStatus.COMPLETED,
         )
         self.db.add(transaction)
+
+        add_notification(
+            self.db,
+            package.cooperative_id,
+            "New package investment",
+            f"{user.full_name} invested ₦{investment_amount:,.2f} in '{pkg_title}'.",
+            "INVESTMENT_CREATED",
+            actor_id=user.id,
+            entity_type="investment",
+            entity_id=new_investment.id,
+            link=f"/packages/{package.id}",
+        )
 
         # --- 8. Commit Database Operations ---
         await self.db.commit()

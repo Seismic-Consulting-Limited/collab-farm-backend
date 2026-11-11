@@ -122,7 +122,9 @@ async def update_settlement_status(
     session: AsyncSession = Depends(get_async_session),
 ):
     try:
-        updated = await SettlementService(session).update_status(settlement_id, payload)
+        updated = await SettlementService(session).update_status(
+            settlement_id, payload, actor=user
+        )
         return {"status": "success", "new_status": updated.status}
     except ValueError as e:
         raise HTTPException(

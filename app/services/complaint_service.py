@@ -21,6 +21,7 @@ from app.schemas.complaint_schema import (
     ComplaintSummaryResponse,
 )
 from app.utils.cloudinary import upload_kyc_document
+from app.services.notification_service import add_notification
 
 
 MAX_EVIDENCE_SIZE = 5 * 1024 * 1024
@@ -168,6 +169,25 @@ class ComplaintService:
                 description="Complaint submitted",
             )
         )
+        admin_ids = (await self.session.execute(
+            select(User.id).where(User.role == UserRole.ADMIN)
+        )).scalars().all()
+        recipients = set(admin_ids)
+        if package is not None:
+            recipients.add(package.cooperative_id)
+        recipients.discard(user.id)
+        for recipient_id in recipients:
+            add_notification(
+                self.session,
+                recipient_id,
+                "New complaint received",
+                f"{user.full_name} submitted a complaint: {subject.strip()}",
+                "COMPLAINT_CREATED",
+                actor_id=user.id,
+                entity_type="complaint",
+                entity_id=complaint.id,
+                link=f"/complaints/{complaint.id}",
+            )
         await self.session.commit()
         await self.session.refresh(complaint)
         complaint.package = package
@@ -357,6 +377,26 @@ class ComplaintService:
                 description="A message was added to the complaint",
             )
         )
+        recipients = {
+            complaint.submitted_by_id,
+            complaint.assigned_reviewer_id,
+        }
+        if complaint.package:
+            recipients.add(complaint.package.cooperative_id)
+        recipients.discard(None)
+        recipients.discard(user.id)
+        for recipient_id in recipients:
+            add_notification(
+                self.session,
+                recipient_id,
+                "New complaint message",
+                f"{user.full_name} added a message to complaint {complaint.reference}.",
+                "COMPLAINT_MESSAGE",
+                actor_id=user.id,
+                entity_type="complaint",
+                entity_id=complaint.id,
+                link=f"/complaints/{complaint.id}",
+            )
         if complaint.status == ComplaintStatus.AWAITING_RESPONSE:
             complaint.status = ComplaintStatus.UNDER_REVIEW
         await self.session.commit()
@@ -393,6 +433,17 @@ class ComplaintService:
                 description=f"Reviewer assigned: {reviewer.full_name}",
             )
         )
+        add_notification(
+            self.session,
+            complaint.submitted_by_id,
+            "Reviewer assigned",
+            f"A reviewer has been assigned to complaint {complaint.reference}.",
+            "COMPLAINT_REVIEWER_ASSIGNED",
+            actor_id=actor.id,
+            entity_type="complaint",
+            entity_id=complaint.id,
+            link=f"/complaints/{complaint.id}",
+        )
         await self.session.commit()
         return {"assigned_reviewer_id": reviewer.id, "reviewer_name": reviewer.full_name}
 
@@ -428,6 +479,17 @@ class ComplaintService:
                 ),
             )
         )
+        add_notification(
+            self.session,
+            complaint.submitted_by_id,
+            "Complaint status updated",
+            f"Complaint {complaint.reference} is now {new_status.value.replace('_', ' ').title()}.",
+            "COMPLAINT_STATUS",
+            actor_id=actor.id,
+            entity_type="complaint",
+            entity_id=complaint.id,
+            link=f"/complaints/{complaint.id}",
+        )
         await self.session.commit()
         return {"status": complaint.status, "outcome": complaint.outcome}
 
@@ -450,5 +512,20 @@ class ComplaintService:
                 description=f"Complaint appealed: {reason.strip()}",
             )
         )
+        admin_ids = (await self.session.execute(
+            select(User.id).where(User.role == UserRole.ADMIN)
+        )).scalars().all()
+        for recipient_id in set(admin_ids) - {user.id}:
+            add_notification(
+                self.session,
+                recipient_id,
+                "Complaint appealed",
+                f"Complaint {complaint.reference} was appealed.",
+                "COMPLAINT_APPEALED",
+                actor_id=user.id,
+                entity_type="complaint",
+                entity_id=complaint.id,
+                link=f"/complaints/{complaint.id}",
+            )
         await self.session.commit()
         return {"status": complaint.status}

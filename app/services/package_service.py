@@ -22,6 +22,7 @@ from app.models.package_model import (
 from app.models.user_model import User, UserRole
 from app.utils.settlement_dates import package_settlement_date
 from app.utils.funding_plan import build_funding_plan
+from app.services.notification_service import add_notification
 from app.schemas.package_schema import (
     AssignFarmerSchema,
     PackageCreate,
@@ -140,6 +141,22 @@ class PackageService:
                     status=DisbursementStatus.PENDING,
                     notes=f"Auto-generated pending disbursement for package '{package.title}'",
                 )
+            )
+
+        admin_ids = (await self.db.execute(
+            select(User.id).where(User.role == UserRole.ADMIN)
+        )).scalars().all()
+        for admin_id in admin_ids:
+            add_notification(
+                self.db,
+                admin_id,
+                "New package submitted",
+                f"{user.full_name} created package '{package.title}'.",
+                "PACKAGE_CREATED",
+                actor_id=user.id,
+                entity_type="package",
+                entity_id=package.id,
+                link=f"/packages/{package.id}",
             )
 
         await self.db.commit()
@@ -661,6 +678,25 @@ class PackageService:
 
         for key, value in update_data.items():
             setattr(package, key, value)
+
+        investor_ids = (await self.db.execute(
+            select(Investment.investor_id)
+            .where(Investment.package_id == package.id)
+            .distinct()
+        )).scalars().all()
+        if update_data:
+            for investor_id in set(investor_ids) - {user.id}:
+                add_notification(
+                    self.db,
+                    investor_id,
+                    "Package updated",
+                    f"Package '{package.title}' has been updated.",
+                    "PACKAGE_UPDATED",
+                    actor_id=user.id,
+                    entity_type="package",
+                    entity_id=package.id,
+                    link=f"/packages/{package.id}",
+                )
 
         await self.db.commit()
         await self.db.refresh(package)

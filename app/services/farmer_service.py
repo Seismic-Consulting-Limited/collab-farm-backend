@@ -28,6 +28,7 @@ from app.schemas.farmer_schema import (
     PaginatedFarmerResponse,
 )
 from app.utils.cloudinary import upload_kyc_document
+from app.services.notification_service import add_notification
 
 
 class FarmerService:
@@ -317,6 +318,22 @@ class FarmerService:
             wrs_status=wrs_val,
         )
         self.db.add(farmer)
+        await self.db.flush()
+        admin_ids = (await self.db.execute(
+            select(User.id).where(User.role == UserRole.ADMIN)
+        )).scalars().all()
+        for admin_id in admin_ids:
+            add_notification(
+                self.db,
+                admin_id,
+                "Farmer profile added",
+                f"{farmer.full_name} was registered by your cooperative.",
+                "FARMER_CREATED",
+                actor_id=user.id,
+                entity_type="farmer",
+                entity_id=farmer.id,
+                link=f"/farmers/{farmer.id}",
+            )
         await self.db.commit()
         return await self.fetch_farmer_with_relations(farmer.id)
     

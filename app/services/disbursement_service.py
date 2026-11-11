@@ -10,6 +10,7 @@ from app.models.disbursement_model import Disbursement, DisbursementStatus
 from app.models.settlement_model import Settlement, SettlementStatus
 from app.models.farmer_model import Farmer
 from app.models.package_model import Package
+from app.models.cooperative_investment_model import Investment
 from app.models.user_model import User
 from app.schemas.disbursement_schema import (
     DisbursementMetricsResponse,
@@ -21,6 +22,7 @@ from app.schemas.disbursement_schema import (
     DisbursementStatusUpdateSchema,
 )
 from app.utils.funding_plan import calculate_funding_progress
+from app.services.notification_service import add_notification
 
 
 def _get_user_display_name(user: Optional[User]) -> str:
@@ -325,6 +327,7 @@ class DisbursementService:
         if not disbursement:
             raise ValueError("Disbursement record not found.")
 
+        previous_status = disbursement.status
         disbursement.status = payload.status
         disbursement.recorded_by_id = admin_user.id
         if payload.notes:
@@ -352,6 +355,31 @@ class DisbursementService:
                     date_settled=datetime.now(timezone.utc),
                 )
                 self.session.add(settlement)
+
+        if previous_status != payload.status:
+            package_title = await self.session.scalar(
+                select(Package.title).where(Package.id == disbursement.package_id)
+            )
+            investor_ids = (await self.session.execute(
+                select(Investment.investor_id)
+                .where(Investment.package_id == disbursement.package_id)
+                .distinct()
+            )).scalars().all()
+            recipients = set(investor_ids)
+            recipients.add(disbursement.cooperative_id)
+            recipients.discard(admin_user.id)
+            for recipient_id in recipients:
+                add_notification(
+                    self.session,
+                    recipient_id,
+                    "Farmer disbursement updated",
+                    f"A disbursement for package '{package_title or 'your package'}' is now {payload.status.value.title()}.",
+                    "DISBURSEMENT_STATUS",
+                    actor_id=admin_user.id,
+                    entity_type="disbursement",
+                    entity_id=disbursement.id,
+                    link=f"/disbursements/{disbursement.id}",
+                )
 
         await self.session.commit()
         await self.session.refresh(disbursement)

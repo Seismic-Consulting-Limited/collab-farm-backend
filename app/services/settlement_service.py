@@ -21,6 +21,7 @@ from app.schemas.settlement_schema import (
     PackageSettlementSummarySchema,
     InvestorToSettleSchema,
 )
+from app.services.notification_service import add_notification
 
 
 class SettlementService:
@@ -353,7 +354,10 @@ class SettlementService:
         )
 
     async def update_status(
-        self, settlement_id: uuid.UUID, payload: SettlementStatusUpdateSchema
+        self,
+        settlement_id: uuid.UUID,
+        payload: SettlementStatusUpdateSchema,
+        actor: Optional[User] = None,
     ) -> Settlement:
         query = select(Settlement).where(Settlement.id == settlement_id)
         result = await self.session.execute(query)
@@ -362,9 +366,38 @@ class SettlementService:
         if not settlement:
             raise ValueError("Settlement record not found.")
 
+        previous_status = settlement.status
         settlement.status = payload.status
         if payload.status == SettlementStatus.SETTLED:
             settlement.date_settled = datetime.now(timezone.utc)
+
+        if previous_status != payload.status:
+            package = (await self.session.execute(
+                select(Package).where(Package.id == settlement.package_id)
+            )).scalars().first()
+            investor_ids = (await self.session.execute(
+                select(Investment.investor_id)
+                .where(Investment.package_id == settlement.package_id)
+                .distinct()
+            )).scalars().all()
+            recipients = set(investor_ids)
+            if package:
+                recipients.add(package.cooperative_id)
+            if actor:
+                recipients.discard(actor.id)
+            package_title = package.title if package else "your package"
+            for recipient_id in recipients:
+                add_notification(
+                    self.session,
+                    recipient_id,
+                    "Settlement status updated",
+                    f"Settlement for '{package_title}' is now {payload.status.value.title()}.",
+                    "SETTLEMENT_STATUS",
+                    actor_id=actor.id if actor else None,
+                    entity_type="settlement",
+                    entity_id=settlement.id,
+                    link=f"/settlements/{settlement.id}",
+                )
 
         await self.session.commit()
         await self.session.refresh(settlement)

@@ -19,6 +19,7 @@ from app.models.complaint_model import (
     ComplaintMessage,
     ComplaintStatus,
 )
+from app.models.notification_model import Notification
 
 __all__ = [
     "Base",
@@ -41,4 +42,5 @@ __all__ = [
     "ComplaintAction",
     "ComplaintCategory",
     "ComplaintStatus",
+    "Notification",
 ]
