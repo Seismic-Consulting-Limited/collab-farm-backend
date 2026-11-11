@@ -18,6 +18,7 @@ async def _send_brevo_email(
     subject: str,
     html_content: str,
     recipient_name: str | None = None,
+    reply_to: str | None = None,
 ) -> None:
     raw_api_key = os.getenv("BREVO_API_KEY", "")
     api_key = raw_api_key.strip()
@@ -45,6 +46,8 @@ async def _send_brevo_email(
         "subject": subject,
         "htmlContent": html_content,
     }
+    if reply_to:
+        payload["replyTo"] = {"email": str(reply_to)}
     async with httpx.AsyncClient(timeout=20.0) as client:
         response = await client.post(
             BREVO_API_URL,
@@ -56,6 +59,45 @@ async def _send_brevo_email(
             json=payload,
         )
         response.raise_for_status()
+
+
+async def send_support_request_email(
+    topic: str,
+    subject: str,
+    message: str,
+    reply_to: str,
+    requester_name: str,
+    requester_role: str,
+) -> None:
+    support_email = (
+        os.getenv("COLLABFARM_SUPPORT_EMAIL")
+        or os.getenv("SUPPORT_EMAIL")
+        or os.getenv("BREVO_SENDER_EMAIL")
+        or "rotneng@gmail.com"
+    ).strip()
+    safe_topic = html.escape(topic)
+    safe_subject = html.escape(subject)
+    safe_message = html.escape(message).replace("\n", "<br>")
+    safe_name = html.escape(requester_name)
+    safe_role = html.escape(requester_role)
+    html_content = f"""
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <h2>CollabFarm support request</h2>
+        <p><strong>Topic:</strong> {safe_topic}</p>
+        <p><strong>Subject:</strong> {safe_subject}</p>
+        <p><strong>From:</strong> {safe_name} ({safe_role})</p>
+        <p><strong>Reply to:</strong> {html.escape(reply_to)}</p>
+        <hr>
+        <p>{safe_message}</p>
+    </div>
+    """
+    await _send_brevo_email(
+        email_to=support_email,
+        subject=f"[CollabFarm Support: {topic}] {subject}",
+        html_content=html_content,
+        recipient_name="CollabFarm Support",
+        reply_to=reply_to,
+    )
 
 
 async def send_welcome_email(
