@@ -12,6 +12,13 @@ from app.models.package_model import (
 from app.models.profile_model import CooperativeProfile, GroupProfile, IndividualProfile
 from app.models.user_model import OAuthAccount, User
 from app.models.disbursement_model import Disbursement
+from app.models.complaint_model import (
+    Complaint,
+    ComplaintAction,
+    ComplaintCategory,
+    ComplaintMessage,
+    ComplaintStatus,
+)
 
 __all__ = [
     "Base",
@@ -28,5 +35,10 @@ __all__ = [
     "PackageType",
     "PackageCategory",
     "FarmerPackageStatus",
-    "Disbursement"
+    "Disbursement",
+    "Complaint",
+    "ComplaintMessage",
+    "ComplaintAction",
+    "ComplaintCategory",
+    "ComplaintStatus",
 ]

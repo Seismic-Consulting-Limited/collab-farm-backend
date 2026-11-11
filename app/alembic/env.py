@@ -21,6 +21,7 @@ import app.models.farmer_model
 import app.models.cooperative_investment_model
 import app.models.wallet_model
 import app.models.package_model
+import app.models.complaint_model
 
 # Alembic Config object
 config = context.config
