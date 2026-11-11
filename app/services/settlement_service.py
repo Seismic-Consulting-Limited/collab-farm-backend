@@ -45,6 +45,15 @@ class SettlementService:
             float(investment.amount or 0.0) * (1 + investor_roi_pct / 100)
             for investment in pending_investments
         )
+        statuses = {investment.status for investment in pending_investments}
+        if InvestmentStatus.PENDING in statuses:
+            status = "Pending"
+        elif InvestmentStatus.OVERDUE in statuses:
+            status = "Overdue"
+        elif pending_investments:
+            status = "Active"
+        else:
+            status = "Settled"
         return {
             "package_total_amount": float(package.fund_amount or 0.0),
             "expected_return_percentage": investor_roi_pct,
@@ -53,6 +62,7 @@ class SettlementService:
             "investors_to_be_settled": len(
                 {investment.investor_id for investment in pending_investments}
             ),
+            "status": status,
         }
 
     @staticmethod

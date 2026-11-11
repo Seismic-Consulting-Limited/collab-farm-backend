@@ -14,6 +14,7 @@ from app.models.package_model import (
     FarmerPackageStatus,
     Package,
     PackageCategory,
+    PackageCurrentStatus,
     PackageFarmer,
     PackageStatus,
     PackageType,
@@ -46,6 +47,16 @@ def _add_months(value: date, months: int) -> date:
 class PackageService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    @staticmethod
+    def _current_status(package_status: PackageStatus) -> PackageCurrentStatus:
+        if package_status == PackageStatus.PENDING:
+            return PackageCurrentStatus.UNDER_REVIEW
+        if package_status == PackageStatus.ACTIVE:
+            return PackageCurrentStatus.APPROVED
+        if package_status == PackageStatus.DISBURSED:
+            return PackageCurrentStatus.ONGOING
+        return PackageCurrentStatus.COMPLETED
 
     def _calculate_settlement(self, amount: float, roi_pct: float) -> float:
         """Calculate expected settlement amount dynamically in the service layer."""
@@ -248,6 +259,8 @@ class PackageService:
             .options(
                 selectinload(Package.cooperative).selectinload(User.cooperative_profile),
                 selectinload(Package.disbursements),
+                selectinload(Package.package_farmers),
+                selectinload(Package.investments),
             )
         )
 
@@ -306,6 +319,13 @@ class PackageService:
                     expected_roi=roi_val,
                     cooperative_share=float(pkg.cooperative_share or 0.0),
                     expected_settlement_amount=settlement_amt,
+                    farmers_count=len(
+                        {assignment.farmer_id for assignment in pkg.package_farmers}
+                    ),
+                    investors_count=len(
+                        {investment.investor_id for investment in pkg.investments}
+                    ),
+                    current_status=self._current_status(pkg.status),
                     whats_included=self._parse_whats_included(pkg.whats_included),
                     status=pkg.status,
                     created_at=pkg.created_at,
@@ -481,6 +501,7 @@ class PackageService:
             whats_included=whats_included,  # <-- Pass parsed items list
             farmers_count=farmers_count,
             investors_count=investors_count,
+            current_status=self._current_status(package.status),
             status=package.status,
             financial_summary=PackageFinancialSummary(
                 total_money_invested=total_invested,

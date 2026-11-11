@@ -54,6 +54,7 @@ class DisbursementListItemResponse(BaseModel):
     farmer: FarmerSummarySchema
     package: PackageSummarySchema
     amount: float
+    current_amount_disbursed: float = 0.0
     disbursement_date: datetime
     status: DisbursementStatus
     transaction_reference: str

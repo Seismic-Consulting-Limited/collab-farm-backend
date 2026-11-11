@@ -66,6 +66,28 @@ class DisbursementService:
         )
 
     @staticmethod
+    def _current_tranche_disbursed_amount(progress: dict) -> float:
+        current_tranche = next(
+            (tranche for tranche in progress["tranches"] if tranche["is_current"]),
+            None,
+        )
+        return float(current_tranche["released_amount"]) if current_tranche else 0.0
+
+    @staticmethod
+    def _most_recent_disbursement_date(package: Package, fallback: datetime) -> datetime:
+        released_statuses = {
+            DisbursementStatus.DISBURSED,
+            DisbursementStatus.COMPLETED,
+        }
+        dates = [
+            disbursement.disbursement_date
+            for disbursement in package.disbursements
+            if disbursement.status in released_statuses
+            and disbursement.disbursement_date is not None
+        ]
+        return max(dates) if dates else fallback
+
+    @staticmethod
     async def create_auto_disbursement_on_assignment(
         session: AsyncSession,
         farmer_id: uuid.UUID,
@@ -221,7 +243,12 @@ class DisbursementService:
                         ],
                     ),
                     amount=float(disbursement.amount or 0),
-                    disbursement_date=disbursement.disbursement_date,
+                    current_amount_disbursed=self._current_tranche_disbursed_amount(
+                        progress
+                    ),
+                    disbursement_date=self._most_recent_disbursement_date(
+                        package, disbursement.disbursement_date
+                    ),
                     status=disbursement.status,
                     transaction_reference=disbursement.transaction_reference,
                     notes=disbursement.notes,

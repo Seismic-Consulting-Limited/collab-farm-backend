@@ -20,6 +20,7 @@ from app.schemas.farmer_schema import (
     FarmerInvestmentRead,
     FarmerInvestmentStatus,
     FarmerActivityRead,
+    FarmerPerformanceSummary,
     FarmerRead,
     FarmerDirectoryItem,
     FarmerDirectoryMetrics,
@@ -420,11 +421,53 @@ class FarmerService:
             )
         investments = await self.get_farmer_investments(farmer_id)
         activities = await self._get_recent_farmer_activities(farmer)
+        performance_summary = await self._get_farmer_performance_summary(farmer_id)
         return FarmerRead.model_validate(farmer).model_copy(
             update={
                 "farmer_investments": investments,
+                "performance_summary": performance_summary,
                 "recent_activities": activities,
             }
+        )
+
+    async def _get_farmer_performance_summary(
+        self, farmer_id: uuid.UUID
+    ) -> FarmerPerformanceSummary:
+        loan_rows = (
+            await self.db.execute(
+                select(Disbursement.amount, Package.expected_roi)
+                .join(Package, Package.id == Disbursement.package_id)
+                .where(
+                    Disbursement.farmer_id == farmer_id,
+                    Disbursement.status.in_(
+                        [DisbursementStatus.DISBURSED, DisbursementStatus.COMPLETED]
+                    ),
+                )
+            )
+        ).all()
+
+        borrowed = sum(float(amount or 0) for amount, _ in loan_rows)
+        repayment_due = sum(
+            float(amount or 0) * (1 + float(roi or 0) / 100)
+            for amount, roi in loan_rows
+        )
+        repaid = float(
+            await self.db.scalar(
+                select(func.coalesce(func.sum(Settlement.amount_settled), 0)).where(
+                    Settlement.farmer_id == farmer_id,
+                    Settlement.status == SettlementStatus.SETTLED,
+                )
+            )
+            or 0
+        )
+
+        return FarmerPerformanceSummary(
+            total_loans_taken=len(loan_rows),
+            total_amount_borrowed=round(borrowed, 2),
+            total_amount_repaid=round(repaid, 2),
+            repayment_rate=round(repaid / repayment_due * 100, 1)
+            if repayment_due > 0
+            else 0.0,
         )
 
     async def _get_recent_farmer_activities(

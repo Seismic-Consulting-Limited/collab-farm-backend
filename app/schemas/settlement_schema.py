@@ -88,6 +88,7 @@ class PackageSettlementSummarySchema(BaseModel):
     expected_return_amount: float
     expected_settlement_amount: float
     investors_to_be_settled: int
+    status: str
     investors: List[InvestorToSettleSchema]
 
 

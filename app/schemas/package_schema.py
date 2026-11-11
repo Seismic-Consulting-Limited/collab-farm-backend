@@ -14,6 +14,7 @@ from pydantic import (
 from app.models.package_model import (
     FarmerPackageStatus,
     PackageCategory,
+    PackageCurrentStatus,
     PackageStatus,
     PackageType,
 )
@@ -184,6 +185,7 @@ class PackageDetailRead(BaseModel):
     whats_included: List[WhatsIncludedItem] = Field(default_factory=list)
     farmers_count: int = 0
     investors_count: int = 0
+    current_status: PackageCurrentStatus
     status: PackageStatus
     financial_summary: PackageFinancialSummary
     farmers: List[PackageFarmerDetail] = Field(default_factory=list)
@@ -231,6 +233,9 @@ class PackageRead(BaseModel):
     expected_roi: float
     cooperative_share: float
     expected_settlement_amount: float = 0.0
+    farmers_count: int = 0
+    investors_count: int = 0
+    current_status: PackageCurrentStatus
     whats_included: List[WhatsIncludedItem] = Field(default_factory=list)
     status: PackageStatus
     created_at: datetime

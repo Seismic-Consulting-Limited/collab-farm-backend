@@ -42,6 +42,13 @@ class PackageStatus(str, Enum):
     COMPLETED = "OVERDUE"
 
 
+class PackageCurrentStatus(str, Enum):
+    UNDER_REVIEW = "UNDER_REVIEW"
+    APPROVED = "APPROVED"
+    ONGOING = "ONGOING"
+    COMPLETED = "COMPLETED"
+
+
 class FarmerPackageStatus(str, Enum):
     PENDING = "PENDING"
     ACTIVE = "ACTIVE"

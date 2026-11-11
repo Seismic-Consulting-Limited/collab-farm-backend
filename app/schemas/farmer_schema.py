@@ -248,6 +248,13 @@ class FarmerActivityRead(BaseModel):
     amount: Optional[float] = None
 
 
+class FarmerPerformanceSummary(BaseModel):
+    total_loans_taken: int = 0
+    total_amount_borrowed: float = 0.0
+    total_amount_repaid: float = 0.0
+    repayment_rate: float = 0.0
+
+
 class FarmerRead(BaseModel):
     id: uuid.UUID
     cooperative_id: uuid.UUID
@@ -272,6 +279,9 @@ class FarmerRead(BaseModel):
     cooperative: Optional[CooperativeSummary] = None
     farms: list[FarmRead] = Field(default_factory=list)
     farmer_investments: list[FarmerInvestmentRead] = Field(default_factory=list)
+    performance_summary: FarmerPerformanceSummary = Field(
+        default_factory=FarmerPerformanceSummary
+    )
     recent_activities: list[FarmerActivityRead] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
