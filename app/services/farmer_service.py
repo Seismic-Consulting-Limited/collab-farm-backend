@@ -875,11 +875,6 @@ class FarmerService:
                 detail="Farmer not found in this cooperative.",
             )
 
-        cat_val = (
-            farm_data.farming_category.value
-            if hasattr(farm_data.farming_category, "value")
-            else farm_data.farming_category
-        )
         status_val = (
             farm_data.status.value
             if hasattr(farm_data.status, "value")
@@ -891,7 +886,7 @@ class FarmerService:
             name=farm_data.name,
             location=farm_data.location,
             size_in_hectares=farm_data.size_in_hectares,
-            farming_category=cat_val,
+            farming_category=farmer.farming_category or FarmingCategory.OTHERS,
             status=status_val,
         )
         self.db.add(new_farm)

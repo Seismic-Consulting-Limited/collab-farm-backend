@@ -58,10 +58,6 @@ class FarmCreate(BaseModel):
     name: str = Field(..., min_length=2, description="Name of the farm")
     location: str = Field(..., description="Location of the farm")
     size_in_hectares: float = Field(..., gt=0, description="Size of farm in hectares")
-    farming_category: Optional[FarmingCategory] = Field(
-        None,
-        description="Farming category: crop_farming, fishery, mixed_farming, poultry",
-    )
     status: FarmStatus = FarmStatus.ACTIVE
 
     @field_validator("status", mode="before")
@@ -70,14 +66,6 @@ class FarmCreate(BaseModel):
         if isinstance(value, str):
             return value.strip().upper()
         return value
-
-    @field_validator("farming_category", mode="before")
-    @classmethod
-    def normalize_category(cls, value: Any) -> Any:
-        if isinstance(value, str):
-            return value.strip().lower().replace(" ", "_")
-        return value
-
 
 class FarmUpdate(BaseModel):
     name: Optional[str] = None
