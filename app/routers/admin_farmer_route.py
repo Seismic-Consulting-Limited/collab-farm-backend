@@ -36,11 +36,12 @@ async def list_pending_farmer_reviews(
 async def review_farmer(
     farmer_id: uuid.UUID,
     payload: FarmerVerificationReview,
-    _admin: User = Depends(current_admin_user),
+    admin: User = Depends(current_admin_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     return await FarmerService(db).review_farmer(
         farmer_id=farmer_id,
         approved=payload.approved,
+        admin=admin,
         note=payload.note,
     )

@@ -15,6 +15,7 @@ from app.models.wallet_model import (
     TransactionType,
     Wallet,
 )
+from app.services.notification_service import add_notification
 from app.schemas.wallet_schema import (
     FundWalletSchema,
     ResolveAccountRequestSchema,
@@ -159,6 +160,17 @@ class WalletService:
             if wallet:
                 wallet.available_balance += Decimal(str(tx.amount))
 
+            add_notification(
+                self.session,
+                user.id,
+                "Wallet funded",
+                f"Your wallet was credited with ₦{Decimal(str(tx.amount)):,.2f}.",
+                "WALLET_DEPOSIT_COMPLETED",
+                entity_type="transaction",
+                entity_id=tx.id,
+                link="/wallet/transactions",
+            )
+
             await self.session.commit()
             if wallet:
                 await self.session.refresh(wallet)
@@ -260,6 +272,20 @@ class WalletService:
         )
 
         self.session.add(transaction)
+        await self.session.flush()
+        add_notification(
+            self.session,
+            user.id,
+            "Withdrawal processed" if is_success else "Withdrawal failed",
+            (
+                f"Your withdrawal of ₦{withdrawal_amount:,.2f} was "
+                f"{'processed' if is_success else 'not completed'}."
+            ),
+            "WALLET_WITHDRAWAL_COMPLETED" if is_success else "WALLET_WITHDRAWAL_FAILED",
+            entity_type="transaction",
+            entity_id=transaction.id,
+            link="/wallet/transactions",
+        )
         await self.session.commit()
 
         return {
