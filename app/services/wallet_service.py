@@ -15,9 +15,9 @@ from app.models.wallet_model import (
     TransactionType,
     Wallet,
 )
-from app.services.notification_service import add_notification
 from app.models.cooperative_investment_model import Investment
 from app.models.disbursement_model import Disbursement, DisbursementStatus
+from app.services.notification_service import add_notification
 from app.schemas.wallet_schema import (
     FundWalletSchema,
     ResolveAccountRequestSchema,
