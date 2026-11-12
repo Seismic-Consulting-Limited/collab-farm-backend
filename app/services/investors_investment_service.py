@@ -36,6 +36,7 @@ from app.schemas.investors_investment_schema import (
     SettlementInformation,
 )
 from app.services.notification_service import add_notification
+from app.utils.funding_plan import calculate_funding_progress
 
 
 class InvestmentService:
@@ -69,6 +70,29 @@ class InvestmentService:
         if cat is not None:
             return cat.value if hasattr(cat, "value") else str(cat)
         return "General"
+
+    def _get_package_current_stage(self, package: Optional[Package]) -> str:
+        """Return the active funding tranche based on released package funds."""
+        if not package:
+            return "Not started"
+
+        released_statuses = {
+            DisbursementStatus.DISBURSED,
+            DisbursementStatus.COMPLETED,
+        }
+        disbursements = getattr(package, "disbursements", []) or []
+        released = [item for item in disbursements if item.status in released_statuses]
+        total_released = sum(float(item.amount or 0) for item in released)
+        progress = calculate_funding_progress(
+            float(getattr(package, "fund_amount", 0.0) or 0.0),
+            total_released,
+            [
+                {"amount": item.amount, "released_at": item.disbursement_date}
+                for item in released
+            ],
+            category=getattr(package, "category", None),
+        )
+        return progress["current_stage"]
 
     def _verify_investor_role(self, user: User) -> None:
         """Ensure the user is authorized as an Investor."""
@@ -447,6 +471,7 @@ class InvestmentService:
                     expected_settlement_date=expected_settlement_date,
                     date_invested=inv.created_at,
                     status=inv_status.capitalize(),
+                    current_stage=self._get_package_current_stage(pkg),
                 )
             )
 
@@ -540,6 +565,7 @@ class InvestmentService:
             package_title=pkg_title,
             package_code=f"INV-{str(investment.id)[:4].upper()}",
             category=self._get_farming_category(pkg),
+            current_stage=self._get_package_current_stage(pkg),
             invested_date_str=investment.created_at.strftime("%d %b %Y, %I:%M %p"),
             investment_details=YourInvestmentDetails(
                 amount_invested=float(investment.amount),
