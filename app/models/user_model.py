@@ -79,6 +79,7 @@ class User(SQLAlchemyBaseUserTableUUID, Base, TimestampMixin):
         default=VerificationStatus.NOT_SUBMITTED,
         nullable=False,
     )
+    verification_note: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     individual_profile: Mapped[Optional["IndividualProfile"]] = relationship(
         "IndividualProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"

@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime
+from enum import Enum
 from typing import List, Optional
 from math import isclose
 from pydantic import (
@@ -15,6 +16,7 @@ from app.models.package_model import (
     FarmerPackageStatus,
     PackageCategory,
     PackageCurrentStatus,
+    PackageReviewStatus,
     PackageStatus,
     PackageType,
 )
@@ -187,6 +189,10 @@ class PackageDetailRead(BaseModel):
     investors_count: int = 0
     current_status: PackageCurrentStatus
     status: PackageStatus
+    review_status: PackageReviewStatus
+    review_note: Optional[str] = None
+    cooperative_note: Optional[str] = None
+    proposed_changes: Optional[dict] = None
     financial_summary: PackageFinancialSummary
     farmers: List[PackageFarmerDetail] = Field(default_factory=list)
     assigned_farmers: List[PackageFarmerDetail] = []
@@ -238,6 +244,10 @@ class PackageRead(BaseModel):
     current_status: PackageCurrentStatus
     whats_included: List[WhatsIncludedItem] = Field(default_factory=list)
     status: PackageStatus
+    review_status: PackageReviewStatus
+    review_note: Optional[str] = None
+    cooperative_note: Optional[str] = None
+    proposed_changes: Optional[dict] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -275,4 +285,37 @@ class PackageUpdate(BaseModel):
         default=None,
         validation_alias=AliasChoices("whats_included", "whatsIncluded"),
     )
-    status: Optional[PackageStatus] = None
+
+
+
+class PackageAdminAction(str, Enum):
+    APPROVE = "APPROVE"
+    REJECT = "REJECT"
+    PROPOSE_EDITS = "PROPOSE_EDITS"
+
+
+class PackageAdminReview(BaseModel):
+    action: PackageAdminAction
+    note: Optional[str] = None
+    changes: Optional[PackageCreate] = None
+
+    @model_validator(mode="after")
+    def validate_action_payload(self):
+        if self.action == PackageAdminAction.PROPOSE_EDITS and self.changes is None:
+            raise ValueError("changes are required when proposing package edits")
+        if self.action != PackageAdminAction.PROPOSE_EDITS and self.changes is not None:
+            raise ValueError("changes can only be supplied when proposing edits")
+        return self
+
+
+class PackageCooperativeReview(BaseModel):
+    accept_edits: bool
+    note: Optional[str] = None
+
+
+class PaginatedPackageReviewResponse(BaseModel):
+    items: List[PackageDetailRead]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int

@@ -8,7 +8,12 @@ from sqlalchemy.orm import selectinload
 
 from app.models.cooperative_investment_model import Investment, InvestmentStatus
 from app.models.farmer_model import Farmer
-from app.models.package_model import Package, PackageFarmer
+from app.models.package_model import (
+    Package,
+    PackageFarmer,
+    PackageReviewStatus,
+    PackageStatus,
+)
 from app.models.user_model import User, UserRole
 from app.models.disbursement_model import DisbursementStatus
 from app.models.wallet_model import (
@@ -213,6 +218,15 @@ class InvestmentService:
         package = package_res.unique().scalar_one_or_none()
 
         if not package:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Investment package not found.",
+            )
+
+        if (
+            package.review_status != PackageReviewStatus.APPROVED
+            or package.status != PackageStatus.ACTIVE
+        ):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Investment package not found.",

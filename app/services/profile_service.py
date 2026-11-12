@@ -1,10 +1,20 @@
 from fastapi import HTTPException, UploadFile, status
+import math
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.profile_model import CooperativeProfile, GroupProfile, IndividualProfile
-from app.schemas.profile_schema import UserProfile, IndividualProfileRead, CooperativeProfileRead, GroupProfileRead
+from app.schemas.profile_schema import (
+    AdminInvestorReviewItem,
+    AdminCooperativeReviewItem,
+    GroupProfileRead,
+    IndividualProfileRead,
+    CooperativeProfileRead,
+    PaginatedAdminInvestorReviewResponse,
+    PaginatedAdminCooperativeReviewResponse,
+    UserProfile,
+)
 from app.models.user_model import InvestorType, User, UserRole, VerificationStatus
 from app.utils.cloudinary import upload_kyc_document
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 import uuid
 from typing import Optional
@@ -12,6 +22,153 @@ from typing import Optional
 class ProfileService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def list_pending_cooperative_reviews(
+        self, page: int = 1, page_size: int = 12
+    ) -> PaginatedAdminCooperativeReviewResponse:
+        filters = (
+            User.role == UserRole.COOPERATIVE,
+            User.verification_status == VerificationStatus.PENDING,
+        )
+        total = (await self.db.execute(
+            select(func.count(User.id)).where(*filters)
+        )).scalar() or 0
+        users = (await self.db.execute(
+            select(User)
+            .options(selectinload(User.cooperative_profile))
+            .where(*filters)
+            .order_by(User.created_at.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )).scalars().unique().all()
+
+        items = []
+        for user in users:
+            profile = await self.get_user_profile(user.id)
+            items.append(
+                AdminCooperativeReviewItem(
+                    id=user.id,
+                    email=user.email,
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    phone_number=user.phone_number,
+                    verification_status=user.verification_status,
+                    verification_note=user.verification_note,
+                    profile=profile.profile,
+                    created_at=user.created_at,
+                )
+            )
+        return PaginatedAdminCooperativeReviewResponse(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=math.ceil(total / page_size) if total else 0,
+        )
+
+    async def review_cooperative(
+        self, cooperative_id: uuid.UUID, approved: bool, note: Optional[str] = None
+    ) -> AdminCooperativeReviewItem:
+        user = await self.db.get(User, cooperative_id)
+        if not user or user.role != UserRole.COOPERATIVE:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Cooperative account not found.",
+            )
+        user.verification_status = (
+            VerificationStatus.APPROVED if approved else VerificationStatus.REJECTED
+        )
+        user.verification_note = note
+        await self.db.commit()
+        await self.db.refresh(user)
+        profile = await self.get_user_profile(user.id)
+        return AdminCooperativeReviewItem(
+            id=user.id,
+            email=user.email,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            phone_number=user.phone_number,
+            verification_status=user.verification_status,
+            verification_note=user.verification_note,
+            profile=profile.profile,
+            created_at=user.created_at,
+        )
+
+    async def list_pending_investor_reviews(
+        self, page: int = 1, page_size: int = 12
+    ) -> PaginatedAdminInvestorReviewResponse:
+        filters = (
+            User.role == UserRole.INVESTOR,
+            User.verification_status == VerificationStatus.PENDING,
+        )
+        total = (await self.db.execute(
+            select(func.count(User.id)).where(*filters)
+        )).scalar() or 0
+        users = (await self.db.execute(
+            select(User)
+            .options(
+                selectinload(User.individual_profile),
+                selectinload(User.group_profile),
+            )
+            .where(*filters)
+            .order_by(User.created_at.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )).scalars().unique().all()
+
+        items = []
+        for user in users:
+            profile = await self.get_user_profile(user.id)
+            items.append(
+                AdminInvestorReviewItem(
+                    id=user.id,
+                    email=user.email,
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    phone_number=user.phone_number,
+                    investor_type=user.investor_type,
+                    verification_status=user.verification_status,
+                    verification_note=user.verification_note,
+                    profile=profile.profile,
+                    created_at=user.created_at,
+                )
+            )
+        return PaginatedAdminInvestorReviewResponse(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=math.ceil(total / page_size) if total else 0,
+        )
+
+    async def review_investor(
+        self, investor_id: uuid.UUID, approved: bool, note: Optional[str] = None
+    ) -> AdminInvestorReviewItem:
+        user = await self.db.get(User, investor_id)
+        if not user or user.role != UserRole.INVESTOR:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Investor account not found.",
+            )
+        user.verification_status = (
+            VerificationStatus.APPROVED if approved else VerificationStatus.REJECTED
+        )
+        user.verification_note = note
+        await self.db.commit()
+        await self.db.refresh(user)
+        profile = await self.get_user_profile(user.id)
+        return AdminInvestorReviewItem(
+            id=user.id,
+            email=user.email,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            phone_number=user.phone_number,
+            investor_type=user.investor_type,
+            verification_status=user.verification_status,
+            verification_note=user.verification_note,
+            profile=profile.profile,
+            created_at=user.created_at,
+        )
 
     async def submit_individual_profile(
         self,
@@ -58,14 +215,14 @@ class ProfileService:
 
         # 3. Update User Verification Attributes
         user.investor_type = InvestorType.INDIVIDUAL
-        user.verification_status = VerificationStatus.APPROVED
+        user.verification_status = VerificationStatus.PENDING
 
         await self.db.commit()
         await self.db.refresh(user)
 
         return {
             "status": "success",
-            "message": "Individual Investor profile submitted and account verified successfully.",
+            "message": "Individual Investor profile submitted and is awaiting admin review.",
             "verification_status": user.verification_status,
         }
 
@@ -113,7 +270,7 @@ class ProfileService:
         )
 
         user.investor_type = InvestorType.INVESTMENT_GROUP
-        user.verification_status = VerificationStatus.APPROVED
+        user.verification_status = VerificationStatus.PENDING
 
         self.db.add(profile)
         await self.db.commit()
@@ -121,7 +278,7 @@ class ProfileService:
 
         return {
             "status": "success",
-            "message": "Group Investment profile submitted and account verified successfully.",
+            "message": "Group Investment profile submitted and is awaiting admin review.",
             "verification_status": user.verification_status,
         }
 
@@ -249,5 +406,6 @@ class ProfileService:
             role=user.role,
             investor_type=user.investor_type,
             verification_status=user.verification_status,
+            verification_note=user.verification_note,
             profile=active_profile,
         )

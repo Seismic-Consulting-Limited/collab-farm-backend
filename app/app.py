@@ -38,6 +38,9 @@ from app.routers.complaint_route import router as complaint_router
 from app.routers.notification_route import router as notification_router
 from app.routers.support_route import router as support_router
 from app.routers.admin_farmer_route import router as admin_farmer_router
+from app.routers.admin_investor_route import router as admin_investor_router
+from app.routers.admin_cooperative_route import router as admin_cooperative_router
+from app.routers.admin_package_route import router as admin_package_router
 
 limiter = Limiter(
     key_func=get_remote_address
@@ -108,6 +111,9 @@ app.include_router(cooperative_dashboard_router)
 app.include_router(packages_router)
 app.include_router(farmer_router)
 app.include_router(admin_farmer_router)
+app.include_router(admin_investor_router)
+app.include_router(admin_cooperative_router)
+app.include_router(admin_package_router)
 app.include_router(cooperative_investment_router)
 app.include_router(disbursement_router)
 app.include_router(settlement_router)

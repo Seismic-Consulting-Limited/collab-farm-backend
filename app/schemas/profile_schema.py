@@ -117,5 +117,47 @@ class UserProfile(BaseModel):
     role: UserRole
     investor_type: Optional[InvestorType]
     verification_status: VerificationStatus
+    verification_note: Optional[str] = None
     profile: Optional[Union[IndividualProfileRead, GroupProfileRead, CooperativeProfileRead]] = None
     model_config = ConfigDict(from_attributes=True)
+
+
+class AdminInvestorReviewItem(BaseModel):
+    id: uuid.UUID
+    email: EmailStr
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    investor_type: Optional[InvestorType] = None
+    verification_status: VerificationStatus
+    verification_note: Optional[str] = None
+    profile: Optional[Union[IndividualProfileRead, GroupProfileRead]] = None
+    created_at: datetime
+
+
+class PaginatedAdminInvestorReviewResponse(BaseModel):
+    items: list[AdminInvestorReviewItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class AdminCooperativeReviewItem(BaseModel):
+    id: uuid.UUID
+    email: EmailStr
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    verification_status: VerificationStatus
+    verification_note: Optional[str] = None
+    profile: Optional[CooperativeProfileRead] = None
+    created_at: datetime
+
+
+class PaginatedAdminCooperativeReviewResponse(BaseModel):
+    items: list[AdminCooperativeReviewItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int

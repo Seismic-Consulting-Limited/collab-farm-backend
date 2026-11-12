@@ -42,8 +42,17 @@ class PackageStatus(str, Enum):
     COMPLETED = "OVERDUE"
 
 
+class PackageReviewStatus(str, Enum):
+    PENDING_ADMIN = "PENDING_ADMIN"
+    PENDING_COOPERATIVE = "PENDING_COOPERATIVE"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
 class PackageCurrentStatus(str, Enum):
     UNDER_REVIEW = "UNDER_REVIEW"
+    PENDING_COOPERATIVE = "PENDING_COOPERATIVE"
+    REJECTED = "REJECTED"
     APPROVED = "APPROVED"
     ONGOING = "ONGOING"
     COMPLETED = "COMPLETED"
@@ -98,6 +107,14 @@ class Package(Base, TimestampMixin):
         default=PackageStatus.PENDING,
         nullable=False,
     )
+    review_status: Mapped[PackageReviewStatus] = mapped_column(
+        SQLEnum(PackageReviewStatus, native_enum=False),
+        default=PackageReviewStatus.PENDING_ADMIN,
+        nullable=False,
+    )
+    review_note: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    cooperative_note: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    proposed_changes = Column(JSON, nullable=True)
 
     cooperative: Mapped["User"] = relationship(
         "User", foreign_keys=[cooperative_id]

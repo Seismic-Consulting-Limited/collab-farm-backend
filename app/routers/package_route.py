@@ -14,6 +14,7 @@ from app.schemas.package_schema import (
     PackageInvestorResponse,
     PackageRead,
     PackageUpdate,
+    PackageCooperativeReview,
 )
 from app.services.package_service import PackageService
 from app.users import cooperative_write_access, current_active_user
@@ -100,4 +101,20 @@ async def update_package(
     updated_pkg = await PackageService(db).update_package(
         user=user, package_id=package_id, payload=payload
     )
-    return await PackageService(db).get_package_by_id(updated_pkg.id)
+    return await PackageService(db).get_package_details(user=user, package_id=updated_pkg.id)
+
+
+@router.patch(
+    "/{package_id}/review-response",
+    response_model=PackageDetailRead,
+    status_code=status.HTTP_200_OK,
+)
+async def respond_to_package_edits(
+    package_id: uuid.UUID,
+    payload: PackageCooperativeReview,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    service = PackageService(db)
+    package = await service.cooperative_review_package(user, package_id, payload)
+    return await service.get_package_details(user=user, package_id=package.id)

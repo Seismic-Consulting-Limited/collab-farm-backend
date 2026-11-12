@@ -1,9 +1,10 @@
 import calendar
+import math
 import uuid
 from datetime import date
 from typing import List, Optional
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -16,6 +17,7 @@ from app.models.package_model import (
     PackageCategory,
     PackageCurrentStatus,
     PackageFarmer,
+    PackageReviewStatus,
     PackageStatus,
     PackageType,
 )
@@ -32,6 +34,10 @@ from app.schemas.package_schema import (
     PackageInvestorDetail,
     PackageInvestorResponse,
     PackageRead,
+    PackageAdminReview,
+    PackageAdminAction,
+    PackageCooperativeReview,
+    PaginatedPackageReviewResponse,
     PackageUpdate,
     WhatsIncludedItem,
 )
@@ -50,7 +56,16 @@ class PackageService:
         self.db = db
 
     @staticmethod
-    def _current_status(package_status: PackageStatus) -> PackageCurrentStatus:
+    def _current_status(
+        package_status: PackageStatus,
+        review_status: Optional[PackageReviewStatus] = None,
+    ) -> PackageCurrentStatus:
+        if review_status == PackageReviewStatus.PENDING_COOPERATIVE:
+            return PackageCurrentStatus.PENDING_COOPERATIVE
+        if review_status == PackageReviewStatus.REJECTED:
+            return PackageCurrentStatus.REJECTED
+        if review_status == PackageReviewStatus.PENDING_ADMIN:
+            return PackageCurrentStatus.UNDER_REVIEW
         if package_status == PackageStatus.PENDING:
             return PackageCurrentStatus.UNDER_REVIEW
         if package_status == PackageStatus.ACTIVE:
@@ -163,6 +178,238 @@ class PackageService:
         await self.db.refresh(package)
         return package
 
+    async def list_pending_admin_reviews(
+        self, user: User, page: int = 1, page_size: int = 12
+    ) -> PaginatedPackageReviewResponse:
+        base_query = select(Package.id).where(
+            Package.review_status == PackageReviewStatus.PENDING_ADMIN
+        )
+        total = (await self.db.execute(
+            select(func.count()).select_from(base_query.subquery())
+        )).scalar() or 0
+        package_ids = (await self.db.execute(
+            base_query.order_by(Package.created_at.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )).scalars().all()
+        items = [
+            await self.get_package_details(user=user, package_id=package_id)
+            for package_id in package_ids
+        ]
+        return PaginatedPackageReviewResponse(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=math.ceil(total / page_size) if total else 0,
+        )
+
+    async def admin_review_package(
+        self, user: User, package_id: uuid.UUID, payload: PackageAdminReview
+    ) -> Package:
+        if user.role != UserRole.ADMIN:
+            raise HTTPException(status_code=403, detail="Admin privileges required.")
+        package = await self.db.get(Package, package_id)
+        if not package:
+            raise HTTPException(status_code=404, detail="Investment package not found.")
+        if package.review_status != PackageReviewStatus.PENDING_ADMIN:
+            raise HTTPException(
+                status_code=409,
+                detail="This package is no longer awaiting admin review.",
+            )
+
+        package.review_note = payload.note
+        if payload.action == PackageAdminAction.APPROVE:
+            package.review_status = PackageReviewStatus.APPROVED
+            package.status = PackageStatus.ACTIVE
+            package.proposed_changes = None
+        elif payload.action == PackageAdminAction.REJECT:
+            package.review_status = PackageReviewStatus.REJECTED
+            package.proposed_changes = None
+        else:
+            changes = payload.changes
+            if changes is None:
+                raise HTTPException(status_code=422, detail="Package edits are required.")
+            await self._validate_proposed_farmers(package, changes)
+            package.proposed_changes = changes.model_dump(mode="json")
+            package.review_status = PackageReviewStatus.PENDING_COOPERATIVE
+
+        notification_title = {
+            PackageAdminAction.APPROVE: "Package approved",
+            PackageAdminAction.REJECT: "Package rejected",
+            PackageAdminAction.PROPOSE_EDITS: "Package edits need your review",
+        }[payload.action]
+        notification_message = {
+            PackageAdminAction.APPROVE: f"Your package '{package.title}' was approved and is open for investment.",
+            PackageAdminAction.REJECT: f"Your package '{package.title}' was rejected. Review the admin note.",
+            PackageAdminAction.PROPOSE_EDITS: f"An admin proposed edits to package '{package.title}'. Review and respond to the proposal.",
+        }[payload.action]
+        add_notification(
+            self.db,
+            package.cooperative_id,
+            notification_title,
+            notification_message,
+            "PACKAGE_REVIEWED",
+            actor_id=user.id,
+            entity_type="package",
+            entity_id=package.id,
+            link=f"/packages/{package.id}",
+        )
+
+        await self.db.commit()
+        await self.db.refresh(package)
+        return package
+
+    async def cooperative_review_package(
+        self, user: User, package_id: uuid.UUID, payload: PackageCooperativeReview
+    ) -> Package:
+        package = await self.db.get(Package, package_id)
+        if not package:
+            raise HTTPException(status_code=404, detail="Investment package not found.")
+        if user.role != UserRole.COOPERATIVE or package.cooperative_id != user.id:
+            raise HTTPException(status_code=403, detail="You cannot review this package.")
+        if package.review_status != PackageReviewStatus.PENDING_COOPERATIVE:
+            raise HTTPException(
+                status_code=409,
+                detail="This package has no pending admin edits to review.",
+            )
+
+        if payload.accept_edits:
+            if not package.proposed_changes:
+                raise HTTPException(status_code=409, detail="The package edit proposal is missing.")
+            changes = PackageCreate.model_validate(package.proposed_changes)
+            await self._apply_package_changes(package, changes, user)
+            package.review_status = PackageReviewStatus.APPROVED
+            package.status = PackageStatus.ACTIVE
+            package.proposed_changes = None
+            if payload.note:
+                package.cooperative_note = payload.note
+        else:
+            package.review_status = PackageReviewStatus.REJECTED
+            package.proposed_changes = None
+            package.cooperative_note = payload.note
+
+        admin_ids = (await self.db.execute(
+            select(User.id).where(User.role == UserRole.ADMIN)
+        )).scalars().all()
+        for admin_id in admin_ids:
+            add_notification(
+                self.db,
+                admin_id,
+                "Cooperative responded to package edits",
+                f"{package.title} was {'accepted' if payload.accept_edits else 'rejected'} by the cooperative.",
+                "PACKAGE_EDITS_RESPONDED",
+                actor_id=user.id,
+                entity_type="package",
+                entity_id=package.id,
+                link=f"/packages/{package.id}",
+            )
+        await self.db.commit()
+        await self.db.refresh(package)
+        return package
+
+    async def _validate_proposed_farmers(
+        self, package: Package, changes: PackageCreate
+    ) -> None:
+        farmer_ids = [allocation.farmer_id for allocation in changes.farmers]
+        result = await self.db.execute(
+            select(Farmer.id).where(
+                Farmer.id.in_(farmer_ids),
+                Farmer.cooperative_id == package.cooperative_id,
+            )
+        )
+        if set(result.scalars().all()) != set(farmer_ids):
+            raise HTTPException(
+                status_code=400,
+                detail="Every proposed farmer must belong to the package cooperative.",
+            )
+
+    async def _apply_package_changes(
+        self, package: Package, changes: PackageCreate, actor: User
+    ) -> None:
+        await self._validate_proposed_farmers(package, changes)
+        new_allocations = {allocation.farmer_id: allocation for allocation in changes.farmers}
+        assignment_rows = (await self.db.execute(
+            select(PackageFarmer).where(PackageFarmer.package_id == package.id)
+        )).scalars().all()
+        old_assignments = {row.farmer_id: row for row in assignment_rows}
+        disbursement_rows = (await self.db.execute(
+            select(Disbursement).where(Disbursement.package_id == package.id)
+        )).scalars().all()
+        disbursements = {row.farmer_id: row for row in disbursement_rows}
+
+        for farmer_id in set(old_assignments) - set(new_allocations):
+            disbursement = disbursements.get(farmer_id)
+            if disbursement and disbursement.status != DisbursementStatus.PENDING:
+                raise HTTPException(
+                    status_code=409,
+                    detail="A farmer with a non-pending disbursement cannot be removed from this package.",
+                )
+            await self.db.delete(old_assignments[farmer_id])
+            if disbursement:
+                await self.db.delete(disbursement)
+
+        values = changes.model_dump(exclude={"farmers", "whats_included"})
+        values["expected_payback_date"] = changes.end_date
+        values["farming_cycle"] = changes.farming_cycle or (
+            f"{changes.start_date.isoformat()} to {changes.end_date.isoformat()}"
+        )
+        values["whats_included"] = [item.model_dump() for item in changes.whats_included]
+        for key, value in values.items():
+            setattr(package, key, value)
+
+        for farmer_id, allocation in new_allocations.items():
+            assignment = old_assignments.get(farmer_id)
+            if assignment:
+                assignment.allocated_amount = allocation.allocated_amount
+                assignment.tenure_months = changes.tenure_months
+                assignment.expected_roi = changes.expected_roi
+                continue
+            assignment = PackageFarmer(
+                package_id=package.id,
+                farmer_id=farmer_id,
+                allocated_amount=allocation.allocated_amount,
+                tenure_months=changes.tenure_months,
+                expected_roi=changes.expected_roi,
+                status=FarmerPackageStatus.PENDING,
+            )
+            self.db.add(assignment)
+            farmer = await self.db.get(Farmer, farmer_id)
+            disbursement = Disbursement(
+                package_id=package.id,
+                cooperative_id=package.cooperative_id,
+                farmer_id=farmer.id,
+                recorded_by_id=actor.id,
+                amount=allocation.allocated_amount,
+                transaction_reference=(
+                    f"DSB-{str(package.id)[:4].upper()}-"
+                    f"{str(farmer.id)[:4].upper()}-{uuid.uuid4().hex[:6].upper()}"
+                ),
+                status=DisbursementStatus.PENDING,
+                notes=f"Auto-generated pending disbursement for package '{changes.title}'",
+            )
+            self.db.add(disbursement)
+        for farmer_id, allocation in new_allocations.items():
+            if farmer_id in disbursements:
+                disbursements[farmer_id].amount = allocation.allocated_amount
+            elif farmer_id in old_assignments:
+                farmer = await self.db.get(Farmer, farmer_id)
+                self.db.add(
+                    Disbursement(
+                        package_id=package.id,
+                        cooperative_id=package.cooperative_id,
+                        farmer_id=farmer.id,
+                        recorded_by_id=actor.id,
+                        amount=allocation.allocated_amount,
+                        transaction_reference=(
+                            f"DSB-{str(package.id)[:4].upper()}-"
+                            f"{str(farmer.id)[:4].upper()}-{uuid.uuid4().hex[:6].upper()}"
+                        ),
+                        status=DisbursementStatus.PENDING,
+                        notes=f"Auto-generated pending disbursement for package '{changes.title}'",
+                    )
+                )
+
     async def assign_farmers(
         self, user: User, package_id: uuid.UUID, payload: AssignFarmerSchema
     ) -> List[PackageFarmer]:
@@ -176,10 +423,16 @@ class PackageService:
                 detail="Investment package not found.",
             )
 
-        if package.cooperative_id != user.id and user.role != UserRole.ADMIN:
+        if user.role != UserRole.COOPERATIVE or package.cooperative_id != user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not authorized to assign farmers to this package.",
+            )
+
+        if package.review_status != PackageReviewStatus.PENDING_ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Farmers can only be changed before admin review.",
             )
 
         # 2. Fetch Farmer Profiles in Batch
@@ -283,6 +536,11 @@ class PackageService:
 
         if user.role == UserRole.COOPERATIVE:
             query = query.where(Package.cooperative_id == user.id)
+        elif user.role == UserRole.INVESTOR:
+            query = query.where(
+                Package.review_status == PackageReviewStatus.APPROVED,
+                Package.status == PackageStatus.ACTIVE,
+            )
         elif cooperative_id:
             query = query.where(Package.cooperative_id == cooperative_id)
 
@@ -342,9 +600,13 @@ class PackageService:
                     investors_count=len(
                         {investment.investor_id for investment in pkg.investments}
                     ),
-                    current_status=self._current_status(pkg.status),
+                    current_status=self._current_status(pkg.status, pkg.review_status),
                     whats_included=self._parse_whats_included(pkg.whats_included),
                     status=pkg.status,
+                    review_status=pkg.review_status,
+                    review_note=pkg.review_note,
+                    cooperative_note=pkg.cooperative_note,
+                    proposed_changes=pkg.proposed_changes,
                     created_at=pkg.created_at,
                 )
             )
@@ -377,6 +639,18 @@ class PackageService:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied. You can only view packages created by your cooperative.",
+            )
+
+        if (
+            user.role == UserRole.INVESTOR
+            and (
+                package.review_status != PackageReviewStatus.APPROVED
+                or package.status != PackageStatus.ACTIVE
+            )
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Investment package not found.",
             )
 
         # 1. Financial & Settlement Calculations
@@ -518,8 +792,14 @@ class PackageService:
             whats_included=whats_included,  # <-- Pass parsed items list
             farmers_count=farmers_count,
             investors_count=investors_count,
-            current_status=self._current_status(package.status),
+            current_status=self._current_status(
+                package.status, package.review_status
+            ),
             status=package.status,
+            review_status=package.review_status,
+            review_note=package.review_note,
+            cooperative_note=package.cooperative_note,
+            proposed_changes=package.proposed_changes,
             financial_summary=PackageFinancialSummary(
                 total_money_invested=total_invested,
                 total_disbursed_to_farmers=total_disbursed,
@@ -595,10 +875,16 @@ class PackageService:
                 detail=f"No package with ID '{package_id}' was found.",
             )
 
-        if package.cooperative_id != user.id and user.role != UserRole.ADMIN:
+        if user.role != UserRole.COOPERATIVE or package.cooperative_id != user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not authorized to update this package.",
+            )
+
+        if package.review_status != PackageReviewStatus.PENDING_ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Packages can only be edited directly before admin review.",
             )
 
         update_data = payload.model_dump(exclude_unset=True)
