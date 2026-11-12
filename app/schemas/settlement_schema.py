@@ -122,3 +122,8 @@ class SettlementReceiptReviewSchema(BaseModel):
 
 class SettlementReturnReportSchema(BaseModel):
     note: Optional[str] = None
+
+
+class LegacySettlementStatusUpdateSchema(BaseModel):
+    status: SettlementStatus
+    note: Optional[str] = None

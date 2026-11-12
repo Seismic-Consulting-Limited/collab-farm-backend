@@ -14,6 +14,7 @@ from app.schemas.settlement_schema import (
     PackageSettlementPaginatedResponse,
     SettlementReceiptReviewSchema,
     SettlementReturnReportSchema,
+    LegacySettlementStatusUpdateSchema,
 )
 from app.services.settlement_service import SettlementService
 from app.users import current_active_user
@@ -149,6 +150,59 @@ async def confirm_settlement_receipt(
         updated = await SettlementService(session).review_return_receipt(
             settlement_id, payload, actor=user
         )
+        return {"status": "success", "new_status": updated.status}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+        )
+
+
+@router.patch("/{settlement_id}/status", status_code=status.HTTP_200_OK)
+async def update_settlement_status_compat(
+    settlement_id: uuid.UUID,
+    payload: LegacySettlementStatusUpdateSchema,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Compatibility endpoint that preserves the receipt-verification workflow."""
+    service = SettlementService(session)
+    try:
+        if user.role.value == "COOPERATIVE":
+            if payload.status not in {
+                SettlementStatus.SETTLED,
+                SettlementStatus.REVIEWING,
+            }:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cooperatives can only report returned funds. Use /return.",
+                )
+            updated = await service.report_return(
+                settlement_id,
+                SettlementReturnReportSchema(note=payload.note),
+                actor=user,
+            )
+        elif user.role.value == "ADMIN":
+            if payload.status not in {
+                SettlementStatus.SETTLED,
+                SettlementStatus.REJECTED,
+            }:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Admins can only confirm or reject receipt. Use /confirm-receipt.",
+                )
+            updated = await service.review_return_receipt(
+                settlement_id,
+                SettlementReceiptReviewSchema(
+                    received=payload.status == SettlementStatus.SETTLED,
+                    note=payload.note,
+                ),
+                actor=user,
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins and cooperatives can update settlements.",
+            )
         return {"status": "success", "new_status": updated.status}
     except ValueError as e:
         raise HTTPException(
