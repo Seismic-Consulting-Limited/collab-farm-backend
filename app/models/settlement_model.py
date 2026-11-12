@@ -9,10 +9,12 @@ from app.models.base import Base
 
 
 class SettlementStatus(str, enum.Enum):
+    ONGOING = "ONGOING"
     PENDING = "PENDING"
     REVIEWING = "REVIEWING"
     REJECTED = "REJECTED"
     DISBURSED = "DISBURSED"
+    OVERDUE = "OVERDUE"
     SETTLED = "SETTLED"
 
 
@@ -33,14 +35,26 @@ class Settlement(Base):
     recorded_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    returned_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    receipt_verified_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     amount_settled: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     reference: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     status: Mapped[SettlementStatus] = mapped_column(
         SQLEnum(SettlementStatus, native_enum=False),
-        default=SettlementStatus.DISBURSED,
+        default=SettlementStatus.ONGOING,
         nullable=False,
     )
+
+    return_reported_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    return_note: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    review_note: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     date_settled: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -58,3 +72,5 @@ class Settlement(Base):
     package = relationship("Package")
     disbursement = relationship("Disbursement")
     recorded_by = relationship("User", foreign_keys=[recorded_by_id])
+    returned_by = relationship("User", foreign_keys=[returned_by_id])
+    receipt_verified_by = relationship("User", foreign_keys=[receipt_verified_by_id])
