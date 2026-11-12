@@ -7,7 +7,14 @@ from sqlalchemy import cast, func, or_, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.farmer_model import Farm, Farmer, FarmingCategory, FarmStatus, Gender, WRSStatus
+from app.models.farmer_model import (
+    Farm,
+    Farmer,
+    FarmerVerificationStatus,
+    FarmingCategory,
+    FarmStatus,
+    Gender,
+)
 from app.models.cooperative_investment_model import Investment, InvestmentStatus
 from app.models.disbursement_model import Disbursement, DisbursementStatus
 from app.models.package_model import Package, PackageFarmer
@@ -68,6 +75,52 @@ class FarmerService:
             )
         return farmer
 
+    async def list_farmers_for_admin_review(
+        self, page: int = 1, page_size: int = 12
+    ) -> PaginatedFarmerResponse:
+        base_query = select(Farmer).where(
+            Farmer.verification_status == FarmerVerificationStatus.PENDING
+        )
+        total = (await self.db.execute(
+            select(func.count()).select_from(base_query.subquery())
+        )).scalar() or 0
+        result = await self.db.execute(
+            base_query.options(
+                selectinload(Farmer.farms),
+                selectinload(Farmer.cooperative).selectinload(
+                    User.cooperative_profile
+                ),
+            )
+            .order_by(Farmer.created_at.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        farmers = result.scalars().unique().all()
+        return PaginatedFarmerResponse(
+            items=[FarmerRead.model_validate(farmer) for farmer in farmers],
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=math.ceil(total / page_size) if total else 0,
+        )
+
+    async def review_farmer(
+        self, farmer_id: uuid.UUID, approved: bool, note: Optional[str] = None
+    ) -> Farmer:
+        farmer = await self.db.get(Farmer, farmer_id)
+        if not farmer:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Farmer profile with ID '{farmer_id}' not found.",
+            )
+        farmer.verification_status = (
+            FarmerVerificationStatus.APPROVED
+            if approved else FarmerVerificationStatus.REJECTED
+        )
+        farmer.verification_note = note
+        await self.db.commit()
+        return await self.fetch_farmer_with_relations(farmer_id)
+
     async def get_directory(
         self,
         user: User,
@@ -90,12 +143,14 @@ class FarmerService:
         # --- 1. Top Bar Directory Metrics ---
         total_stmt = select(func.count()).select_from(base_query.subquery())
         verified_stmt = select(func.count()).select_from(
-            base_query.where(Farmer.wrs_status ==
-                             WRSStatus.VERIFIED).subquery()
+            base_query.where(
+                Farmer.verification_status == FarmerVerificationStatus.APPROVED
+            ).subquery()
         )
         pending_stmt = select(func.count()).select_from(
-            base_query.where(Farmer.wrs_status ==
-                             WRSStatus.NOT_VERIFIED).subquery()
+            base_query.where(
+                Farmer.verification_status == FarmerVerificationStatus.PENDING
+            ).subquery()
         )
 
         total_farmers = (await self.db.execute(total_stmt)).scalar() or 0
@@ -116,11 +171,15 @@ class FarmerService:
             norm_status = status_filter.strip().upper()
             if norm_status == "VERIFIED":
                 filtered_query = filtered_query.where(
-                    Farmer.wrs_status == WRSStatus.VERIFIED
+                    Farmer.verification_status == FarmerVerificationStatus.APPROVED
                 )
             elif norm_status in ["PENDING", "NOT_VERIFIED"]:
                 filtered_query = filtered_query.where(
-                    Farmer.wrs_status == WRSStatus.NOT_VERIFIED
+                    Farmer.verification_status == FarmerVerificationStatus.PENDING
+                )
+            elif norm_status == "REJECTED":
+                filtered_query = filtered_query.where(
+                    Farmer.verification_status == FarmerVerificationStatus.REJECTED
                 )
 
         has_crop_filter = crop_type and crop_type.lower() != "all"
@@ -195,9 +254,11 @@ class FarmerService:
                     farming_category=category_val,
                     phone_number=farmer.phone_number,
                     date_added=farmer.date_added,
-                    status="Verified"
-                    if farmer.wrs_status == WRSStatus.VERIFIED
-                    else "Pending",
+                    status={
+                        FarmerVerificationStatus.APPROVED: "Verified",
+                        FarmerVerificationStatus.PENDING: "Pending",
+                        FarmerVerificationStatus.REJECTED: "Rejected",
+                    }[farmer.verification_status],
                 )
             )
 
@@ -233,7 +294,6 @@ class FarmerService:
         farming_category: Optional[Union[FarmingCategory, str]] = None,
         photo: Optional[UploadFile] = None,
         additional_info: Optional[str] = None,
-        wrs_status: WRSStatus = WRSStatus.NOT_VERIFIED,
     ) -> Farmer:
         if user.role != UserRole.COOPERATIVE:
             raise HTTPException(
@@ -294,7 +354,6 @@ class FarmerService:
             else farming_category
         )
         gender_val = gender.value if hasattr(gender, "value") else gender
-        wrs_val = wrs_status.value if hasattr(wrs_status, "value") else wrs_status
 
         farmer = Farmer(
             cooperative_id=user.id,
@@ -315,7 +374,6 @@ class FarmerService:
             years_of_experience=years_of_experience,
             terms_accepted=terms_accepted,
             additional_info=additional_info,
-            wrs_status=wrs_val,
         )
         self.db.add(farmer)
         await self.db.flush()
@@ -342,7 +400,6 @@ class FarmerService:
         self,
         search: Optional[str] = None,
         farming_category: Optional[Union[FarmingCategory, str]] = None,
-        wrs_status: Optional[WRSStatus] = None,
         cooperative_id: Optional[uuid.UUID] = None,
         page: int = 1,
         page_size: int = 12,
@@ -357,8 +414,6 @@ class FarmerService:
         if cooperative_id:
             base_query = base_query.where(
                 Farmer.cooperative_id == cooperative_id)
-        if wrs_status:
-            base_query = base_query.where(Farmer.wrs_status == wrs_status)
 
         has_cat_filter = bool(farming_category)
         has_search_filter = bool(search and search.strip())
@@ -694,7 +749,6 @@ class FarmerService:
         gender: Optional[Gender] = None,
         farming_category: Optional[Union[FarmingCategory, str]] = None,
         additional_info: Optional[str] = None,
-        wrs_status: Optional[WRSStatus] = None,
         photo: Optional[UploadFile] = None,
         id_photo: Optional[UploadFile] = None,
         years_of_experience: Optional[int] = None,
@@ -751,7 +805,6 @@ class FarmerService:
             "gender": gender,
             "farming_category": farming_category,
             "additional_info": additional_info,
-            "wrs_status": wrs_status,
             "years_of_experience": years_of_experience,
         }
 

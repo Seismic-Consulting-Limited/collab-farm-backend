@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.farmer_model import Farmer, Farm, WRSStatus
+from app.models.farmer_model import Farmer, Farm, FarmerVerificationStatus
 from app.models.package_model import Package, PackageFarmer
 from app.models.profile_model import CooperativeProfile
 from app.models.user_model import User, UserRole
@@ -72,14 +72,14 @@ class DashboardService:
         verified_farmers = await self.db.scalar(
             select(func.count(func.distinct(Farmer.id))).where(
                 Farmer.id.in_(coop_farmer_ids_stmt),
-                Farmer.wrs_status == WRSStatus.VERIFIED,
+                Farmer.verification_status == FarmerVerificationStatus.APPROVED,
             )
         ) or 0
 
         verified_30d = await self.db.scalar(
             select(func.count(func.distinct(Farmer.id))).where(
                 Farmer.id.in_(coop_farmer_ids_stmt),
-                Farmer.wrs_status == WRSStatus.VERIFIED,
+                Farmer.verification_status == FarmerVerificationStatus.APPROVED,
                 Farmer.created_at >= thirty_days_ago,
             )
         ) or 0
@@ -182,7 +182,7 @@ class DashboardService:
                     name=f.full_name,
                     farming_category=category_val,
                     added_at=f.created_at,
-                    status=f.wrs_status.value if hasattr(f.wrs_status, "value") else str(f.wrs_status),
+                    status=f.verification_status.value if hasattr(f.verification_status, "value") else str(f.verification_status),
                 )
             )
 

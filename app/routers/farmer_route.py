@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import EmailStr
 
 from app.db import get_async_session
-from app.models.farmer_model import FarmingCategory, Gender, WRSStatus
+from app.models.farmer_model import FarmingCategory, Gender
 from app.models.user_model import User
 from app.schemas.farmer_schema import (
     FarmCreate,
@@ -52,7 +52,6 @@ async def add_farmer(
     gender: Gender = Form(...),
     farming_category: FarmingCategory = Form(...),
     additional_info: Optional[str] = Form(None),
-    wrs_status: WRSStatus = Form(WRSStatus.VERIFIED),
     photo: Optional[UploadFile] = File(None),
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
@@ -75,7 +74,6 @@ async def add_farmer(
         farming_category=farming_category,
         photo=photo,
         additional_info=additional_info,
-        wrs_status=wrs_status,
     )
 
 
@@ -83,7 +81,6 @@ async def add_farmer(
 async def list_farmers(
     search: Optional[str] = Query(None),
     farming_category: Optional[FarmingCategory] = Query(None),
-    wrs_status: Optional[WRSStatus] = Query(None),
     cooperative_id: Optional[uuid.UUID] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(12, ge=1, le=100),
@@ -93,7 +90,6 @@ async def list_farmers(
     return await FarmerService(db).list_farmers(
         search=search,
         farming_category=farming_category,
-        wrs_status=wrs_status,
         cooperative_id=cooperative_id,
         page=page,
         page_size=page_size,
@@ -182,7 +178,6 @@ async def update_farmer(
     gender: Optional[Gender] = Form(None),
     farming_category: Optional[FarmingCategory] = Form(None),
     additional_info: Optional[str] = Form(None),
-    wrs_status: Optional[WRSStatus] = Form(None),
     photo: Optional[UploadFile] = File(None),
     id_photo: Optional[UploadFile] = File(None),
     years_of_experience: Optional[int] = Form(None, ge=0),
@@ -205,7 +200,6 @@ async def update_farmer(
         gender=gender,
         farming_category=farming_category,
         additional_info=additional_info,
-        wrs_status=wrs_status,
         photo=photo,
         id_photo=id_photo,
         years_of_experience=years_of_experience,

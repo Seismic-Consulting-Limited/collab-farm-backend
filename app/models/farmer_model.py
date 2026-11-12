@@ -16,9 +16,10 @@ class Gender(str, Enum):
     FEMALE = "FEMALE"
 
 
-class WRSStatus(str, Enum):
-    VERIFIED = "VERIFIED"
-    NOT_VERIFIED = "NOT_VERIFIED"
+class FarmerVerificationStatus(str, Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
 
 
 class FarmStatus(str, enum.Enum):
@@ -104,13 +105,13 @@ class Farmer(Base, TimestampMixin):
     id_photo: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     years_of_experience: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     terms_accepted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    additional_info: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-
-    wrs_status: Mapped[WRSStatus] = mapped_column(
-        FlexibleEnum(WRSStatus),
-        default=WRSStatus.VERIFIED,
+    verification_note: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    verification_status: Mapped[FarmerVerificationStatus] = mapped_column(
+        FlexibleEnum(FarmerVerificationStatus),
+        default=FarmerVerificationStatus.PENDING,
         nullable=False,
     )
+    additional_info: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     cooperative: Mapped["User"] = relationship("User", back_populates="farmers")
     farms: Mapped[List["Farm"]] = relationship(

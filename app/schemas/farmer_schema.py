@@ -9,10 +9,10 @@ class Gender(str, Enum):
     MALE = "MALE"
     FEMALE = "FEMALE"
 
-# Warehouse Receipt System(WRS)
-class WRSStatus(str, Enum):
-    VERIFIED = "VERIFIED"
-    NOT_VERIFIED = "NOT_VERIFIED"
+class FarmerVerificationStatus(str, Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
 
 
 class FarmStatus(str, Enum):
@@ -162,7 +162,6 @@ class FarmerCreate(BaseModel):
     farming_category: FarmingCategory = Field(..., description="Primary farming category")
     years_of_experience: int = Field(..., ge=0)
     terms_accepted: bool
-    wrs_status: WRSStatus = WRSStatus.VERIFIED
     additional_info: Optional[str] = None
 
     @field_validator("nin")
@@ -186,7 +185,7 @@ class FarmerCreate(BaseModel):
             raise ValueError("The farmer must accept the agreement terms")
         return value
 
-    @field_validator("gender", "wrs_status", mode="before")
+    @field_validator("gender", mode="before")
     @classmethod
     def normalize_farmer_enums(cls, value: Any) -> Any:
         if isinstance(value, str):
@@ -216,7 +215,6 @@ class FarmerUpdate(BaseModel):
     farming_category: Optional[FarmingCategory] = None
     years_of_experience: Optional[int] = Field(None, ge=0)
     additional_info: Optional[str] = None
-    wrs_status: Optional[WRSStatus] = None
 
     @field_validator("nin")
     @classmethod
@@ -225,7 +223,7 @@ class FarmerUpdate(BaseModel):
             raise ValueError("NIN must consist of exactly 11 digits.")
         return v
 
-    @field_validator("gender", "wrs_status", mode="before")
+    @field_validator("gender", mode="before")
     @classmethod
     def normalize_farmer_enums(cls, value: Any) -> Any:
         if isinstance(value, str):
@@ -274,8 +272,9 @@ class FarmerRead(BaseModel):
     id_photo: Optional[str] = None
     years_of_experience: int = 0
     terms_accepted: bool = False
+    verification_note: Optional[str] = None
+    verification_status: FarmerVerificationStatus = FarmerVerificationStatus.PENDING
     additional_info: Optional[str] = None
-    wrs_status: WRSStatus
     cooperative: Optional[CooperativeSummary] = None
     farms: list[FarmRead] = Field(default_factory=list)
     farmer_investments: list[FarmerInvestmentRead] = Field(default_factory=list)
