@@ -1,16 +1,16 @@
 from enum import Enum
 from typing import Optional, TYPE_CHECKING
 import uuid
+from datetime import datetime
 from fastapi_users_db_sqlalchemy import (
     SQLAlchemyBaseOAuthAccountTableUUID,
     SQLAlchemyBaseUserTableUUID,
 )
-from sqlalchemy import Enum as SQLEnum, ForeignKey, String
+from sqlalchemy import DateTime, Enum as SQLEnum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 from app.models.farmer_model import Farmer
-from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.hybrid import hybrid_property
 
 if TYPE_CHECKING:
@@ -65,8 +65,9 @@ class User(SQLAlchemyBaseUserTableUUID, Base, TimestampMixin):
         String(10), nullable=True, default=None
     )
 
-    email_otp_expires_at = (datetime.now(
-        timezone.utc) + timedelta(minutes=15)).replace(tzinfo=None)
+    email_otp_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 # investor type is now at profile update no longer here
     investor_type: Mapped[Optional[InvestorType]] = mapped_column(
