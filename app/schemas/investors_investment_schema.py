@@ -40,6 +40,7 @@ class InvestorInvestmentListItem(BaseModel):
     expected_settlement_date: Optional[date] = None
     date_invested: datetime
     status: str
+    current_stage: str
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -99,6 +100,7 @@ class InvestorInvestmentDetailResponse(BaseModel):
     package_title: str
     package_code: str
     category: str
+    current_stage: str
     invested_date_str: str
     investment_details: YourInvestmentDetails
     investment_progress: Optional[InvestmentProgressResponse] = None
