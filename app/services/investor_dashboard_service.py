@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime, time, timezone
 from typing import List, Optional
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -10,6 +10,7 @@ from app.models.cooperative_investment_model import Investment, InvestmentStatus
 from app.models.package_model import Package
 from app.models.user_model import User, UserRole
 from app.models.wallet_model import Wallet
+from app.models.disbursement_model import Disbursement, DisbursementStatus
 from app.utils.settlement_dates import package_settlement_date
 from app.schemas.investor_dashboard_schema import (
     FarmingCategoryAllocationItem,
@@ -171,6 +172,49 @@ class InvestorDashboardService:
         today = datetime.now(timezone.utc).date()
 
         total_invested_amount = sum(float(inv.amount or 0.0) for inv in investor_investments)
+        investor_amount_by_package = {}
+        for inv in investor_investments:
+            investor_amount_by_package[inv.package_id] = (
+                investor_amount_by_package.get(inv.package_id, 0.0)
+                + float(inv.amount or 0.0)
+            )
+
+        package_ids = list(investor_amount_by_package)
+        total_invested_by_package = {}
+        disbursed_by_package = {}
+        if package_ids:
+            funding_rows = await self.db.execute(
+                select(Investment.package_id, func.sum(Investment.amount))
+                .where(Investment.package_id.in_(package_ids))
+                .group_by(Investment.package_id)
+            )
+            total_invested_by_package = {
+                package_id: float(amount or 0.0)
+                for package_id, amount in funding_rows.all()
+            }
+
+            disbursement_rows = await self.db.execute(
+                select(Disbursement.package_id, func.sum(Disbursement.amount))
+                .where(
+                    Disbursement.package_id.in_(package_ids),
+                    Disbursement.status.in_(
+                        [DisbursementStatus.DISBURSED, DisbursementStatus.COMPLETED]
+                    ),
+                )
+                .group_by(Disbursement.package_id)
+            )
+            disbursed_by_package = {
+                package_id: float(amount or 0.0)
+                for package_id, amount in disbursement_rows.all()
+            }
+
+        disbursed_funds = sum(
+            disbursed_by_package.get(package_id, 0.0)
+            * investor_amount
+            / total_invested_by_package[package_id]
+            for package_id, investor_amount in investor_amount_by_package.items()
+            if total_invested_by_package.get(package_id, 0.0) > 0
+        )
         unsettled_investments = [
             inv for inv in investor_investments if inv.status != InvestmentStatus.REPAID
         ]
@@ -197,7 +241,6 @@ class InvestorDashboardService:
         )
         overdue_investments_count = len(overdue_investments)
         # Keep legacy metric keys in sync while clients migrate to the explicit names.
-        disbursed_funds = total_invested_amount
         overdue_returns_count = overdue_investments_count
 
         metrics = InvestorDashboardMetrics(

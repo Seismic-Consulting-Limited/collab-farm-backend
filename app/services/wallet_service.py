@@ -6,7 +6,7 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+from sqlalchemy import func, select
 
 from app.models.user_model import User, UserRole
 from app.models.wallet_model import (
@@ -15,6 +15,8 @@ from app.models.wallet_model import (
     TransactionType,
     Wallet,
 )
+from app.models.cooperative_investment_model import Investment
+from app.models.disbursement_model import Disbursement, DisbursementStatus
 from app.schemas.wallet_schema import (
     FundWalletSchema,
     ResolveAccountRequestSchema,
@@ -171,7 +173,55 @@ class WalletService:
 
     async def get_overview(self, user: User) -> Wallet:
         self._verify_investor_role(user)
-        return await self._get_or_create_wallet(user.id)
+        wallet = await self._get_or_create_wallet(user.id)
+
+        investor_funding_rows = await self.session.execute(
+            select(Investment.package_id, func.sum(Investment.amount))
+            .where(Investment.investor_id == user.id)
+            .group_by(Investment.package_id)
+        )
+        investor_funding = {
+            package_id: float(amount or 0.0)
+            for package_id, amount in investor_funding_rows.all()
+        }
+
+        package_ids = list(investor_funding)
+        total_disbursed_by_package = {}
+        total_invested_by_package = {}
+        if package_ids:
+            package_funding_rows = await self.session.execute(
+                select(Investment.package_id, func.sum(Investment.amount))
+                .where(Investment.package_id.in_(package_ids))
+                .group_by(Investment.package_id)
+            )
+            total_invested_by_package = {
+                package_id: float(amount or 0.0)
+                for package_id, amount in package_funding_rows.all()
+            }
+
+            disbursement_rows = await self.session.execute(
+                select(Disbursement.package_id, func.sum(Disbursement.amount))
+                .where(
+                    Disbursement.package_id.in_(package_ids),
+                    Disbursement.status.in_(
+                        [DisbursementStatus.DISBURSED, DisbursementStatus.COMPLETED]
+                    ),
+                )
+                .group_by(Disbursement.package_id)
+            )
+            total_disbursed_by_package = {
+                package_id: float(amount or 0.0)
+                for package_id, amount in disbursement_rows.all()
+            }
+
+        wallet.actively_distributed = sum(
+            total_disbursed_by_package.get(package_id, 0.0)
+            * investor_amount
+            / total_invested_by_package[package_id]
+            for package_id, investor_amount in investor_funding.items()
+            if total_invested_by_package.get(package_id, 0.0) > 0
+        )
+        return wallet
 
     async def get_transactions(
         self,
