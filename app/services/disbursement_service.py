@@ -351,8 +351,8 @@ class DisbursementService:
                     recorded_by_id=admin_user.id,
                     amount_settled=Decimal(str(disbursement.amount)),
                     reference=f"STL-{uuid.uuid4().hex[:10].upper()}",
-                    status=SettlementStatus.DISBURSED,
-                    date_settled=datetime.now(timezone.utc),
+                    status=SettlementStatus.ONGOING,
+                    date_settled=None,
                 )
                 self.session.add(settlement)
 

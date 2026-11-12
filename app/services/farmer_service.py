@@ -105,7 +105,11 @@ class FarmerService:
         )
 
     async def review_farmer(
-        self, farmer_id: uuid.UUID, approved: bool, note: Optional[str] = None
+        self,
+        farmer_id: uuid.UUID,
+        approved: bool,
+        admin: User,
+        note: Optional[str] = None,
     ) -> Farmer:
         farmer = await self.db.get(Farmer, farmer_id)
         if not farmer:
@@ -118,6 +122,19 @@ class FarmerService:
             if approved else FarmerVerificationStatus.REJECTED
         )
         farmer.verification_note = note
+        decision = "approved" if approved else "rejected"
+        add_notification(
+            self.db,
+            farmer.cooperative_id,
+            f"Farmer verification {decision}",
+            f"{farmer.full_name}'s profile was {decision} by an admin."
+            + (f" Note: {note}" if note else ""),
+            "FARMER_VERIFICATION",
+            actor_id=admin.id,
+            entity_type="farmer",
+            entity_id=farmer.id,
+            link=f"/farmers/{farmer.id}",
+        )
         await self.db.commit()
         return await self.fetch_farmer_with_relations(farmer_id)
 

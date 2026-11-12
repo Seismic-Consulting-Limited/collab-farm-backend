@@ -71,7 +71,23 @@ class AuthService:
             )
 
         token = await self.strategy.write_token(user)
-        return {"access_token": token, "token_type": "bearer"}
+        role = user.role.value if hasattr(user.role, "value") else str(user.role)
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "role": role,
+            "user": {
+                "id": str(user.id),
+                "email": user.email,
+                "role": role,
+                "is_verified": user.is_verified,
+                "verification_status": (
+                    user.verification_status.value
+                    if hasattr(user.verification_status, "value")
+                    else str(user.verification_status)
+                ),
+            },
+        }
 
     async def register(
         self, user_create: UserCreate, background_tasks: BackgroundTasks
@@ -108,6 +124,11 @@ class AuthService:
                 "user": {
                     "id": str(user.id),
                     "email": user.email,
+                    "role": (
+                        user.role.value
+                        if hasattr(user.role, "value")
+                        else str(user.role)
+                    ),
                     "is_verified": user.is_verified,
                 },
             }

@@ -14,6 +14,7 @@ from app.schemas.profile_schema import (
 )
 from app.models.user_model import InvestorType, User, UserRole, VerificationStatus
 from app.utils.cloudinary import upload_kyc_document
+from app.services.notification_service import add_notification
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 import uuid
@@ -22,6 +23,33 @@ from typing import Optional
 class ProfileService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def _notify_admins(
+        self,
+        *,
+        actor: User,
+        title: str,
+        message: str,
+        notification_type: str,
+        entity_type: str,
+    ) -> None:
+        admin_ids = (await self.db.execute(
+            select(User.id).where(User.role == UserRole.ADMIN)
+        )).scalars().all()
+        for admin_id in set(admin_ids) - {actor.id}:
+            add_notification(
+                self.db,
+                admin_id,
+                title,
+                message,
+                notification_type,
+                actor_id=actor.id,
+                entity_type=entity_type,
+                entity_id=actor.id,
+                link="/admin/cooperatives/pending"
+                if actor.role == UserRole.COOPERATIVE
+                else "/admin/investors/pending",
+            )
 
     async def list_pending_cooperative_reviews(
         self, page: int = 1, page_size: int = 12
@@ -67,7 +95,11 @@ class ProfileService:
         )
 
     async def review_cooperative(
-        self, cooperative_id: uuid.UUID, approved: bool, note: Optional[str] = None
+        self,
+        cooperative_id: uuid.UUID,
+        approved: bool,
+        admin: User,
+        note: Optional[str] = None,
     ) -> AdminCooperativeReviewItem:
         user = await self.db.get(User, cooperative_id)
         if not user or user.role != UserRole.COOPERATIVE:
@@ -79,6 +111,19 @@ class ProfileService:
             VerificationStatus.APPROVED if approved else VerificationStatus.REJECTED
         )
         user.verification_note = note
+        decision = "approved" if approved else "rejected"
+        add_notification(
+            self.db,
+            user.id,
+            f"Cooperative verification {decision}",
+            f"Your cooperative profile was {decision} by an admin."
+            + (f" Note: {note}" if note else ""),
+            "COOPERATIVE_VERIFICATION",
+            actor_id=admin.id,
+            entity_type="cooperative_profile",
+            entity_id=user.id,
+            link="/profile/me",
+        )
         await self.db.commit()
         await self.db.refresh(user)
         profile = await self.get_user_profile(user.id)
@@ -142,7 +187,11 @@ class ProfileService:
         )
 
     async def review_investor(
-        self, investor_id: uuid.UUID, approved: bool, note: Optional[str] = None
+        self,
+        investor_id: uuid.UUID,
+        approved: bool,
+        admin: User,
+        note: Optional[str] = None,
     ) -> AdminInvestorReviewItem:
         user = await self.db.get(User, investor_id)
         if not user or user.role != UserRole.INVESTOR:
@@ -154,6 +203,19 @@ class ProfileService:
             VerificationStatus.APPROVED if approved else VerificationStatus.REJECTED
         )
         user.verification_note = note
+        decision = "approved" if approved else "rejected"
+        add_notification(
+            self.db,
+            user.id,
+            f"Investor verification {decision}",
+            f"Your investor profile was {decision} by an admin."
+            + (f" Note: {note}" if note else ""),
+            "INVESTOR_VERIFICATION",
+            actor_id=admin.id,
+            entity_type="investor_profile",
+            entity_id=user.id,
+            link="/profile/me",
+        )
         await self.db.commit()
         await self.db.refresh(user)
         profile = await self.get_user_profile(user.id)
@@ -216,6 +278,14 @@ class ProfileService:
         # 3. Update User Verification Attributes
         user.investor_type = InvestorType.INDIVIDUAL
         user.verification_status = VerificationStatus.PENDING
+        user.verification_note = None
+        await self._notify_admins(
+            actor=user,
+            title="Investor verification submitted",
+            message=f"{user.full_name} submitted an individual investor profile for review.",
+            notification_type="INVESTOR_PROFILE_SUBMITTED",
+            entity_type="investor_profile",
+        )
 
         await self.db.commit()
         await self.db.refresh(user)
@@ -271,6 +341,14 @@ class ProfileService:
 
         user.investor_type = InvestorType.INVESTMENT_GROUP
         user.verification_status = VerificationStatus.PENDING
+        user.verification_note = None
+        await self._notify_admins(
+            actor=user,
+            title="Investor verification submitted",
+            message=f"{company_name} submitted an investment group profile for review.",
+            notification_type="INVESTOR_PROFILE_SUBMITTED",
+            entity_type="investor_profile",
+        )
 
         self.db.add(profile)
         await self.db.commit()
@@ -334,6 +412,14 @@ class ProfileService:
         )
 
         user.verification_status = VerificationStatus.PENDING
+        user.verification_note = None
+        await self._notify_admins(
+            actor=user,
+            title="Cooperative verification submitted",
+            message=f"{cooperative_name} submitted a cooperative profile for review.",
+            notification_type="COOPERATIVE_PROFILE_SUBMITTED",
+            entity_type="cooperative_profile",
+        )
 
         self.db.add(profile)
         await self.db.commit()
