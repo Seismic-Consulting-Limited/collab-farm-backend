@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.cooperative_investment_model import Investment
 from app.models.disbursement_model import Disbursement, DisbursementStatus
-from app.models.farmer_model import Farmer
+from app.models.farmer_model import Farmer, FarmerVerificationStatus
 from app.models.package_model import (
     FarmerPackageStatus,
     Package,
@@ -761,6 +761,24 @@ class PackageService:
             if package.cooperative and getattr(package.cooperative, "cooperative_profile", None)
             else getattr(package, "cooperative_name", None)
         )
+        cooperative_profile = (
+            getattr(package.cooperative, "cooperative_profile", None)
+            if package.cooperative else None
+        )
+        cooperative_verification_status = (
+            getattr(package.cooperative.verification_status, "value", package.cooperative.verification_status)
+            if package.cooperative else None
+        )
+        verified_farmers_count = 0
+        if package.cooperative:
+            verified_farmers_count = (
+                await self.db.execute(
+                    select(func.count(Farmer.id)).where(
+                        Farmer.cooperative_id == package.cooperative_id,
+                        Farmer.verification_status == FarmerVerificationStatus.APPROVED,
+                    )
+                )
+            ).scalar_one()
 
         whats_included = self._parse_whats_included(getattr(package, "whats_included", None))
 
@@ -768,6 +786,12 @@ class PackageService:
             id=package.id,
             cooperative_id=package.cooperative_id,
             cooperative_name=coop_name,
+            cooperative_verification_status=cooperative_verification_status,
+            cooperative_verified=(cooperative_verification_status == "approved"),
+            cooperative_year_established=(
+                cooperative_profile.year_established if cooperative_profile else None
+            ),
+            verified_farmers_count=verified_farmers_count,
             title=package.title,
             package_type=package.package_type,
             category=package.category,

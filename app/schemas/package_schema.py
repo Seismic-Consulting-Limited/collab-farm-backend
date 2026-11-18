@@ -163,6 +163,10 @@ class PackageDetailRead(BaseModel):
     id: uuid.UUID
     cooperative_id: uuid.UUID
     cooperative_name: Optional[str] = None
+    cooperative_verification_status: Optional[str] = None
+    cooperative_verified: bool = False
+    cooperative_year_established: Optional[int] = None
+    verified_farmers_count: int = 0
     title: str
     package_type: PackageType
     category: PackageCategory
