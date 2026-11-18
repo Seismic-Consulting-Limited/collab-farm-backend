@@ -15,6 +15,27 @@ class InvestorDashboardMetrics(BaseModel):
     overdue_investments_count: int
 
 
+class InvestorCooperativeItem(BaseModel):
+    id: uuid.UUID
+    cooperative_name: str
+    year_established: int
+    registration_number: str
+    phone_number: str
+    address: str
+    lga: str
+    state: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InvestorCooperativesResponse(BaseModel):
+    items: List[InvestorCooperativeItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 class OverdueReturnItem(BaseModel):
     investment_id: uuid.UUID
     package_name: str
