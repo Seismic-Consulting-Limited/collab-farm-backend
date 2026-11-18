@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 import secrets
 from typing import Optional
@@ -10,9 +10,10 @@ from passlib.context import CryptContext
 
 load_dotenv()
 
-SECRET = os.getenv("SECRET")
+SECRET = os.getenv("SECRET", "SUPER_SECRET_KEY")
 ALGORITHM = "HS256"
 VERIFICATION_TOKEN_EXPIRE_HOURS = 0.1
+REFRESH_TOKEN_EXPIRE_DAYS = 30
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 serializer = URLSafeTimedSerializer(SECRET)
@@ -56,6 +57,27 @@ def decode_email_verification_token(token: str) -> Optional[str]:
     try:
         payload = jwt.decode(token, SECRET, algorithms=[ALGORITHM])
         if payload.get("scope") != "email_verification":
+            return None
+        return payload.get("sub")
+    except jwt.PyJWTError:
+        return None
+
+
+def create_refresh_token(user_id: str) -> str:
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        days=REFRESH_TOKEN_EXPIRE_DAYS
+    )
+    return jwt.encode(
+        {"sub": user_id, "type": "refresh", "exp": expires_at},
+        SECRET,
+        algorithm=ALGORITHM,
+    )
+
+
+def decode_refresh_token(token: str) -> Optional[str]:
+    try:
+        payload = jwt.decode(token, SECRET, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
             return None
         return payload.get("sub")
     except jwt.PyJWTError:

@@ -1,14 +1,16 @@
-from datetime import datetime, timedelta, timezone
 from fastapi import BackgroundTasks, HTTPException, Request, status
 from fastapi_users.exceptions import UserAlreadyExists, UserNotExists
 from pydantic import BaseModel, EmailStr, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 from app.models.user_model import User
 from app.schemas.user_schema import (
     ChangePassword,
     ForgotPasswordSchema,
+    RefreshTokenSchema,
     ResetPasswordSchema,
     UserCreate,
     VerifyOTPSchema,
@@ -18,6 +20,8 @@ from app.utils.emails import (
     send_verification_email_background,
 )
 from app.utils.security import (
+    create_refresh_token,
+    decode_refresh_token,
     generate_otp,
     generate_reset_token,
     verify_reset_token,
@@ -71,9 +75,11 @@ class AuthService:
             )
 
         token = await self.strategy.write_token(user)
+        refresh_token = create_refresh_token(str(user.id))
         role = user.role.value if hasattr(user.role, "value") else str(user.role)
         return {
             "access_token": token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "role": role,
             "user": {
@@ -117,9 +123,11 @@ class AuthService:
 
             # 4. Generate bearer token for immediate frontend session
             access_token = await self.strategy.write_token(user)
+            refresh_token = create_refresh_token(str(user.id))
 
             return {
                 "access_token": access_token,
+                "refresh_token": refresh_token,
                 "token_type": "bearer",
                 "user": {
                     "id": str(user.id),
@@ -137,6 +145,25 @@ class AuthService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="User already exists.",
             )
+
+    async def refresh(self, payload: RefreshTokenSchema) -> dict:
+        user_id = decode_refresh_token(payload.refresh_token)
+        try:
+            user = await self.user_manager.get(UUID(user_id)) if user_id else None
+        except (UserNotExists, ValueError, TypeError):
+            user = None
+
+        if user is None or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired refresh token.",
+            )
+
+        return {
+            "access_token": await self.strategy.write_token(user),
+            "refresh_token": create_refresh_token(str(user.id)),
+            "token_type": "bearer",
+        }
 
     async def verify_email_otp(self, payload: VerifyOTPSchema) -> dict:
         try:

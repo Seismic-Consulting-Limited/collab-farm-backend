@@ -8,6 +8,7 @@ from app.models.user_model import User
 from app.schemas.user_schema import (
     ChangePassword,
     ForgotPasswordSchema,
+    RefreshTokenSchema,
     ResetPasswordSchema,
     UserCreate,
     VerifyOTPSchema,
@@ -39,6 +40,26 @@ async def login(
     return await AuthService(user_manager=user_manager, strategy=strategy).login(
         request, form_data
     )
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+async def logout(user: User = Depends(current_active_user)):
+    """End the current client session by discarding its bearer token."""
+    return {
+        "status": "success",
+        "message": "Logged out successfully.",
+    }
+
+
+@router.post("/refresh")
+async def refresh_token(
+    payload: RefreshTokenSchema,
+    user_manager: UserManager = Depends(get_user_manager),
+    strategy=Depends(auth_backend.get_strategy),
+):
+    return await AuthService(
+        user_manager=user_manager, strategy=strategy
+    ).refresh(payload)
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
