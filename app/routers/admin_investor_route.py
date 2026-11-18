@@ -39,11 +39,12 @@ async def list_pending_investor_reviews(
 async def review_investor(
     investor_id: uuid.UUID,
     payload: InvestorVerificationReview,
-    _admin: User = Depends(current_admin_user),
+    admin: User = Depends(current_admin_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     return await ProfileService(db).review_investor(
         investor_id=investor_id,
         approved=payload.approved,
+        admin=admin,
         note=payload.note,
     )

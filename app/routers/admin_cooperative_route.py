@@ -41,11 +41,12 @@ async def list_pending_cooperative_reviews(
 async def review_cooperative(
     cooperative_id: uuid.UUID,
     payload: CooperativeVerificationReview,
-    _admin: User = Depends(current_admin_user),
+    admin: User = Depends(current_admin_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     return await ProfileService(db).review_cooperative(
         cooperative_id=cooperative_id,
         approved=payload.approved,
+        admin=admin,
         note=payload.note,
     )
